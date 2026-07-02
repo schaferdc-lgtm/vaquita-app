@@ -1,0 +1,6 @@
+{
+  "name": "VaquitaApp",
+  "description": "A collaborative crowdfunding app for itemized project funding (events, construction) with support for full or partial funding of components, interactive progress tracking, coupon generation, and Supabase integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

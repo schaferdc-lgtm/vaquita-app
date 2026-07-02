@@ -1,0 +1,179 @@
+import { Project, ProjectComponent, UserProfile } from './types';
+
+export const INITIAL_USERS: UserProfile[] = [
+  {
+    id: 'user-admin',
+    email: 'schaferdc@gmail.com',
+    full_name: 'Daniel Schafer (Admin)',
+    role: 'admin',
+  },
+  {
+    id: 'user-owner-1',
+    email: 'creador@proyecto.com',
+    full_name: 'Santiago Soler (Project Owner)',
+    role: 'owner',
+  },
+  {
+    id: 'user-backer-1',
+    email: 'aportante@gmail.com',
+    full_name: 'Maria Luz (Backer)',
+    role: 'backer',
+  }
+];
+
+export const INITIAL_PROJECTS: Project[] = [
+  {
+    id: 'CLUB-BAÑOS',
+    name: 'Creación de Baños para un Club',
+    description: 'Proyecto comunitario para remodelar y construir los baños del Club Social y Deportivo de nuestro barrio. ¡Tu ayuda es fundamental!',
+    category: 'construction',
+    owner_id: 'user-owner-1',
+    created_at: '2026-06-15T12:00:00Z',
+    payment_alias: 'CLUB.BANOS.URQUIZA',
+    payment_cbu: '0000003100022223333444',
+    start_date: '2026-06-01',
+    end_date: '2026-12-31',
+    is_deleted: false,
+  },
+  {
+    id: 'FIESTA-FIN',
+    name: 'Fiesta de Fin de Año Comunitaria',
+    description: 'La gran fiesta del barrio para celebrar los logros de este año. Alquilamos local, contratamos DJ y compramos insumos colectivamente.',
+    category: 'party',
+    owner_id: 'user-owner-1',
+    created_at: '2026-06-20T14:30:00Z',
+    payment_alias: 'FIESTA.FIN.BARRIO',
+    payment_cbu: '0000003100099998888777',
+    start_date: '2026-06-01',
+    end_date: '2026-12-31',
+    is_deleted: false,
+  }
+];
+
+export const INITIAL_COMPONENTS: ProjectComponent[] = [
+  // CLUB-BAÑOS Components
+  {
+    id: 'comp-1-1',
+    project_id: 'CLUB-BAÑOS',
+    name: 'Bolsones de Arena',
+    unit_price: 50000,
+    quantity: 100,
+    remaining_quantity: 100,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 5000000,
+  },
+  {
+    id: 'comp-1-2',
+    project_id: 'CLUB-BAÑOS',
+    name: 'Bolsas de Cemento',
+    unit_price: 30000,
+    quantity: 20,
+    remaining_quantity: 20,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 600000,
+  },
+  {
+    id: 'comp-1-3',
+    project_id: 'CLUB-BAÑOS',
+    name: 'Bolsas de Cal',
+    unit_price: 40000,
+    quantity: 20,
+    remaining_quantity: 20,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 800000,
+  },
+  {
+    id: 'comp-1-4',
+    project_id: 'CLUB-BAÑOS',
+    name: 'Ladrillos',
+    unit_price: 150,
+    quantity: 3500,
+    remaining_quantity: 3500,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 525000,
+  },
+  {
+    id: 'comp-1-5',
+    project_id: 'CLUB-BAÑOS',
+    name: 'Tiras de Alambre de 8',
+    unit_price: 10000,
+    quantity: 100,
+    remaining_quantity: 100,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 1000000,
+  },
+
+  // FIESTA-FIN Components
+  {
+    id: 'comp-2-1',
+    project_id: 'FIESTA-FIN',
+    name: 'Alquiler de Local',
+    unit_price: 1000000,
+    quantity: 1,
+    remaining_quantity: 1,
+    funded_amount: 0,
+    allow_partial: true, // unit_price > 100000 and quantity < 3
+    total_price: 1000000,
+  },
+  {
+    id: 'comp-2-2',
+    project_id: 'FIESTA-FIN',
+    name: 'DiscJockey',
+    unit_price: 500000,
+    quantity: 1,
+    remaining_quantity: 1,
+    funded_amount: 0,
+    allow_partial: true, // unit_price > 100000 and quantity < 3
+    total_price: 500000,
+  },
+  {
+    id: 'comp-2-3',
+    project_id: 'FIESTA-FIN',
+    name: 'Entradas',
+    unit_price: 50000,
+    quantity: 1000,
+    remaining_quantity: 1000,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 50000000,
+  },
+  {
+    id: 'comp-2-4',
+    project_id: 'FIESTA-FIN',
+    name: 'Botellas de Fernet',
+    unit_price: 20000,
+    quantity: 100,
+    remaining_quantity: 100,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 2000000,
+  },
+  {
+    id: 'comp-2-5',
+    project_id: 'FIESTA-FIN',
+    name: 'Botellas de Coca Cola',
+    unit_price: 8000,
+    quantity: 200,
+    remaining_quantity: 200,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 1600000, // wait! 200 * 8000 = 1,600,000 (Note: the prompt says "200 Botellas de Coca , Precio unitario 8.000, Total 160.000" but mathematically 200 * 8000 = 1.600.000. Let's fix this mathematically!)
+    // Yes! Let's keep mathematical consistency so calculations don't break.
+  },
+  {
+    id: 'comp-2-6',
+    project_id: 'FIESTA-FIN',
+    name: 'Bolsas de Hielo',
+    unit_price: 5000,
+    quantity: 25,
+    remaining_quantity: 25,
+    funded_amount: 0,
+    allow_partial: false,
+    total_price: 125000,
+  }
+];
