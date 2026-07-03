@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Project, ProjectComponent, Contribution, UserProfile, 
-  SupabaseConfig, ProjectCategory, UserAction 
+  SupabaseConfig, ProjectCategory, UserAction, AdminEmail 
 } from './types';
 import { 
   INITIAL_USERS, INITIAL_PROJECTS, INITIAL_COMPONENTS 
@@ -27,6 +27,7 @@ const LS_USERS = 'collaborative_crowdfund_users';
 const LS_ACTIVE_USER = 'collaborative_crowdfund_active_user';
 const LS_CONFIG = 'collaborative_crowdfund_supabase_config';
 const LS_USER_ACTIONS = 'collaborative_crowdfund_user_actions';
+const LS_ADMIN_EMAILS = 'collaborative_crowdfund_admin_emails';
 
 export default function App() {
   // --- DATABASE STATE ---
@@ -35,6 +36,7 @@ export default function App() {
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [userActions, setUserActions] = useState<UserAction[]>([]);
+  const [adminEmails, setAdminEmails] = useState<AdminEmail[]>([]);
   
   // --- ADMIN PARAMETERS ---
   const [adminFeeMin, setAdminFeeMin] = useState<number>(50000);
@@ -71,6 +73,7 @@ export default function App() {
   // --- MODALS & NOTIFICATIONS ---
   const [activeCoupon, setActiveCoupon] = useState<Contribution | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
 
   // --- PROJECT CREATION FORM STATE ---
   const [showCreateProjectForm, setShowCreateProjectForm] = useState(false);
@@ -256,6 +259,14 @@ export default function App() {
       setUserActions(JSON.parse(localUserActions));
     } else {
       setUserActions([]);
+    }
+
+    // Hydrate Admin Emails
+    const localAdminEmails = localStorage.getItem(LS_ADMIN_EMAILS);
+    if (localAdminEmails) {
+      setAdminEmails(JSON.parse(localAdminEmails));
+    } else {
+      setAdminEmails([]);
     }
 
     // Process auto-expiry of pending contributions older than 24 hours on app load
@@ -1011,9 +1022,9 @@ export default function App() {
     showAlert('success', 'Las fechas de vigencia se han actualizado correctamente.');
   };
 
-  // Toggle Project Approval (OK final de vigencia) - Admin only
-  const handleToggleProjectApproval = (projectId: string, approve: boolean) => {
-    if (activeUser?.role !== 'admin') {
+  // Toggle Project Approval (OK final de vigencia) - Admin or Auto MP
+  const handleToggleProjectApproval = (projectId: string, approve: boolean, isAutoMpApproved?: boolean) => {
+    if (!isAutoMpApproved && activeUser?.role !== 'admin') {
       showAlert('error', 'Solo los administradores pueden autorizar vigencia de proyectos.');
       return;
     }
@@ -1027,14 +1038,78 @@ export default function App() {
     setProjects(updated);
     syncToLocalStorage(updated, components, contributions);
 
-    if (activeUser) {
+    if (activeUser || isAutoMpApproved) {
+      const actorEmail = isAutoMpApproved ? 'sistema@mercadopago.com' : (activeUser?.email || 'admin');
       logUserAction(
-        activeUser.email,
+        actorEmail,
         approve ? 'APROBACION_VIGENCIA_PROYECTO' : 'RECHAZO_VIGENCIA_PROYECTO',
-        `${approve ? 'Aprobó' : 'Rechazó'} el OK final de vigencia del proyecto ${projectId}`
+        `${approve ? 'Aprobó' : 'Rechazó'} el OK final de vigencia del proyecto ${projectId} (${isAutoMpApproved ? 'Acreditación instantánea vía Mercado Pago' : 'Acción manual por Admin'})`
       );
     }
-    showAlert('success', approve ? 'Vigencia aprobada exitosamente (OK Final de Crowdfunding).' : 'Se ha rechazado/denegado la vigencia del proyecto.');
+    showAlert('success', approve 
+      ? (isAutoMpApproved 
+          ? '¡Vigencia aprobada automáticamente por acreditación de pago de Mercado Pago!'
+          : 'Vigencia aprobada exitosamente (OK Final de Crowdfunding).')
+      : 'Se ha rechazado/denegado la vigencia del proyecto.'
+    );
+  };
+
+  // Send simulated email notifications to Admin (schaferdc@gmail.com)
+  const handleSendAdminEmail = (
+    type: 'payment_intent' | 'payment_result',
+    details: { projectId: string; amount: number; isSuccess?: boolean; paymentId?: string }
+  ) => {
+    const senderName = activeUser?.full_name || 'Project Owner';
+    const senderEmail = activeUser?.email || 'owner@proyecto.com';
+    const projectMatch = projects.find(p => p.id === details.projectId);
+    const projectName = projectMatch ? projectMatch.name : details.projectId;
+
+    let subject = '';
+    let body = '';
+
+    if (type === 'payment_intent') {
+      subject = `⚠️ Intención de Pago de Comisión: "${projectName}"`;
+      body = `El usuario <strong>${senderName}</strong> (${senderEmail}) está por realizar el pago de la comisión/servicio de crowdfunding para activar el proyecto <strong>"${projectName}"</strong> (ID: ${details.projectId}).<br/><br/>` +
+             `<strong>Monto de Comisión a pagar:</strong> $${details.amount.toLocaleString('es-AR')}<br/>` +
+             `<strong>Medio de Pago:</strong> Mercado Pago Checkout Pro<br/>` +
+             `<strong>Fecha y Hora:</strong> ${new Date().toLocaleString('es-AR')}<br/><br/>` +
+             `<em>Este es un aviso automático de intención de pago. El proyecto/evento quedará habilitado de manera automática una vez que la transacción de Mercado Pago sea exitosa.</em>`;
+    } else {
+      subject = `✅ Pago de Comisión Acreditado: "${projectName}"`;
+      body = `¡Buenas noticias! Se ha acreditado exitosamente el pago de la comisión/servicio para el proyecto <strong>"${projectName}"</strong> (ID: ${details.projectId}).<br/><br/>` +
+             `<strong>Monto de Comisión:</strong> $${details.amount.toLocaleString('es-AR')}<br/>` +
+             `<strong>Medio de Pago:</strong> Mercado Pago Checkout Pro<br/>` +
+             `<strong>ID de Operación MP:</strong> <code style="font-family: monospace; background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #009EE3;">${details.paymentId}</code><br/>` +
+             `<strong>Resultado:</strong> Transacción Conciliada al instante<br/>` +
+             `<strong>Fecha de Acreditación:</strong> ${new Date().toLocaleString('es-AR')}<br/><br/>` +
+             `<strong>Habilitación del Proyecto:</strong> AUTOMÁTICA ✔ (El estado del proyecto se ha actualizado a <strong>VIGENTE</strong> de manera inmediata y ya se encuentra habilitado para recibir aportes en línea).`;
+    }
+
+    const newEmail: AdminEmail = {
+      id: `mail-${Math.random().toString(36).substring(2, 9)}`,
+      sender_name: senderName,
+      sender_email: senderEmail,
+      recipient_email: 'schaferdc@gmail.com',
+      subject,
+      body,
+      received_at: new Date().toISOString(),
+      is_read: false,
+      type
+    };
+
+    setAdminEmails(prev => {
+      const updated = [newEmail, ...prev]; // Put new emails at the beginning of the inbox
+      localStorage.setItem(LS_ADMIN_EMAILS, JSON.stringify(updated));
+      return updated;
+    });
+
+    logUserAction(
+      senderEmail,
+      type === 'payment_intent' ? 'ENVIO_MAIL_INTENCION_PAGO' : 'ENVIO_MAIL_RESULTADO_PAGO',
+      `Se envió correo automático al administrador notificando: ${subject}`
+    );
+
+    showAlert('success', `📧 Notificación de correo enviada al Admin (${newEmail.recipient_email})`);
   };
 
   // Soft delete project (Owner or Admin)
@@ -1233,7 +1308,7 @@ export default function App() {
                 }`}
               >
                 Panel de Admin
-                {totalAdminPendingCount > 0 && (
+                {(totalAdminPendingCount > 0 || adminEmails.filter(e => !e.is_read).length > 0) && (
                   <span className="absolute -top-1 -right-1 flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
@@ -1244,27 +1319,36 @@ export default function App() {
                 <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-64 sm:w-72 transition-all duration-250">
                   <div className="w-2.5 h-2.5 bg-slate-800 rotate-45 -mb-1 shadow-sm"></div>
                   <div className="bg-slate-800 text-white text-[10px] sm:text-xs font-normal p-3 rounded-xl shadow-xl border border-slate-700 text-center leading-normal">
-                    {totalAdminPendingCount > 0 ? (
+                    {totalAdminPendingCount > 0 || adminEmails.filter(e => !e.is_read).length > 0 ? (
                       <>
-                        <span className="font-bold text-amber-400 block mb-1">● Tareas Pendientes ({totalAdminPendingCount})</span>
-                        Hay{' '}
-                        {pendingProjectsCount > 0 && (
-                          <span>
-                            <strong>{pendingProjectsCount}</strong> proyecto{pendingProjectsCount > 1 ? 's' : ''} pendiente{pendingProjectsCount > 1 ? 's' : ''} de habilitación
-                          </span>
+                        <span className="font-bold text-amber-400 block mb-1">● Tareas Pendientes</span>
+                        {totalAdminPendingCount > 0 && (
+                          <p className="mb-1 text-left text-[11px]">
+                            Hay{' '}
+                            {pendingProjectsCount > 0 && (
+                              <span>
+                                <strong>{pendingProjectsCount}</strong> proyecto{pendingProjectsCount > 1 ? 's' : ''} pendiente{pendingProjectsCount > 1 ? 's' : ''} de habilitación
+                              </span>
+                            )}
+                            {pendingProjectsCount > 0 && pendingContributionsCount > 0 && ' y '}
+                            {pendingContributionsCount > 0 && (
+                              <span>
+                                <strong>{pendingContributionsCount}</strong> comprobante{pendingContributionsCount > 1 ? 's' : ''} por validar
+                              </span>
+                            )}
+                            .
+                          </p>
                         )}
-                        {pendingProjectsCount > 0 && pendingContributionsCount > 0 && ' y '}
-                        {pendingContributionsCount > 0 && (
-                          <span>
-                            <strong>{pendingContributionsCount}</strong> comprobante{pendingContributionsCount > 1 ? 's' : ''} por validar
-                          </span>
+                        {adminEmails.filter(e => !e.is_read).length > 0 && (
+                          <p className="text-left text-sky-300 font-bold text-[11px] mt-1 border-t border-slate-700/50 pt-1">
+                            📧 Tienes {adminEmails.filter(e => !e.is_read).length} correo{adminEmails.filter(e => !e.is_read).length > 1 ? 's' : ''} nuevo{adminEmails.filter(e => !e.is_read).length > 1 ? 's' : ''} en tu bandeja de entrada de Mercado Pago.
+                          </p>
                         )}
-                        . Navega aquí para resolverlas.
                       </>
                     ) : (
                       <>
                         <span className="font-bold text-emerald-400 block mb-1">✔ Todo al Día</span>
-                        No hay proyectos pendientes de habilitación ni comprobantes de pago por validar en este momento.
+                        No hay proyectos pendientes de habilitación, comprobantes de pago por validar ni correos sin leer en este momento.
                       </>
                     )}
                   </div>
@@ -1338,6 +1422,7 @@ export default function App() {
             onSoftDeleteProject={handleSoftDeleteProject}
             onRestoreProject={handleRestoreProject}
             onToggleProjectApproval={handleToggleProjectApproval}
+            onSendAdminEmail={handleSendAdminEmail}
             onEdit={handleOpenEditProject}
             adminFeeMin={adminFeeMin}
             adminFeeMax={adminFeeMax}
@@ -2440,6 +2525,170 @@ export default function App() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+
+                {/* BANDEJA DE ENTRADA DE EMAILS (Doble Notificación Mercado Pago) */}
+                <div id="admin-email-inbox" className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-50 pb-3 gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="p-2 bg-blue-50 text-blue-700 rounded-lg">
+                        <Database className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div className="text-left">
+                        <h3 className="font-extrabold text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2 flex-wrap">
+                          <span>Buzón de Alertas por Mail</span>
+                          <span className="text-[10px] text-slate-400 font-mono font-normal tracking-normal lowercase">(schaferdc@gmail.com)</span>
+                          {adminEmails.filter(e => !e.is_read).length > 0 && (
+                            <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse shrink-0">
+                              {adminEmails.filter(e => !e.is_read).length} NUEVOS
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[10px] text-slate-400">
+                          Notificaciones de intenciones de pago y resultados de cobro por Mercado Pago en tiempo real.
+                        </p>
+                      </div>
+                    </div>
+                    {adminEmails.length > 0 && (
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            const updated = adminEmails.map(m => ({ ...m, is_read: true }));
+                            setAdminEmails(updated);
+                            localStorage.setItem(LS_ADMIN_EMAILS, JSON.stringify(updated));
+                            showAlert('success', 'Todos los correos han sido marcados como leídos.');
+                          }}
+                          className="px-2.5 py-1.5 hover:bg-slate-50 text-slate-600 border border-slate-200 font-bold text-[9px] uppercase tracking-wider rounded-xl transition cursor-pointer bg-white"
+                        >
+                          Marcar todo leído
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm('¿Está seguro de que desea vaciar la bandeja de entrada?')) {
+                              setAdminEmails([]);
+                              setSelectedEmailId(null);
+                              localStorage.setItem(LS_ADMIN_EMAILS, JSON.stringify([]));
+                              showAlert('success', 'Bandeja de entrada vaciada.');
+                            }
+                          }}
+                          className="px-2.5 py-1.5 hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-[9px] uppercase tracking-wider rounded-xl transition cursor-pointer bg-white"
+                        >
+                          Vaciar Bandeja
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {adminEmails.length === 0 ? (
+                    <div className="text-center py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-150 flex flex-col items-center justify-center space-y-2">
+                      <div className="w-10 h-10 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center">
+                        <Plus className="w-5 h-5 text-slate-300" />
+                      </div>
+                      <div className="max-w-md">
+                        <h4 className="text-xs font-bold text-slate-700">Sin correos electrónicos en la bandeja</h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Cuando un creador inicie un pago de comisión o se acredite exitosamente, recibirás las alertas automáticas en este buzón.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 border border-slate-150 rounded-2xl overflow-hidden bg-slate-50/30">
+                      {/* Mail List */}
+                      <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-slate-150 max-h-[360px] overflow-y-auto divide-y divide-slate-150 bg-white">
+                        {adminEmails.map((email) => {
+                          const isSelected = selectedEmailId === email.id || (!selectedEmailId && adminEmails[0].id === email.id);
+                          if (isSelected && !selectedEmailId) {
+                            // Sync selection state if not set
+                            setTimeout(() => setSelectedEmailId(email.id), 0);
+                          }
+                          return (
+                            <div
+                              key={email.id}
+                              onClick={() => {
+                                setSelectedEmailId(email.id);
+                                if (!email.is_read) {
+                                  const updated = adminEmails.map(m => m.id === email.id ? { ...m, is_read: true } : m);
+                                  setAdminEmails(updated);
+                                  localStorage.setItem(LS_ADMIN_EMAILS, JSON.stringify(updated));
+                                }
+                              }}
+                              className={`p-3.5 transition cursor-pointer text-left relative flex flex-col gap-1.5 ${
+                                isSelected ? 'bg-blue-50/50' : 'hover:bg-slate-50'
+                              } ${!email.is_read ? 'border-l-4 border-blue-600' : ''}`}
+                            >
+                              <div className="flex justify-between items-start">
+                                <span className="font-extrabold text-slate-700 text-xs truncate max-w-[70%]">
+                                  {email.sender_name}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  {new Date(email.received_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              <div className="text-[11px] font-bold text-slate-800 line-clamp-1">
+                                {email.subject}
+                              </div>
+                              <div className="flex justify-between items-center mt-1">
+                                <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
+                                  email.type === 'payment_intent'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}>
+                                  {email.type === 'payment_intent' ? 'Intención' : 'Pago OK'}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  {new Date(email.received_at).toLocaleDateString('es-AR')}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Mail Body View */}
+                      <div className="lg:col-span-7 p-5 bg-white min-h-[300px] flex flex-col">
+                        {(() => {
+                          const currentEmail = adminEmails.find(m => m.id === selectedEmailId) || adminEmails[0];
+                          if (!currentEmail) return null;
+                          return (
+                            <div className="space-y-4 text-left flex-1 flex flex-col">
+                              {/* Header details */}
+                              <div className="border-b border-slate-100 pb-3.5 space-y-1.5 shrink-0">
+                                <div className="flex flex-wrap justify-between items-start gap-1">
+                                  <h4 className="text-sm font-black text-slate-800 tracking-tight leading-snug">
+                                    {currentEmail.subject}
+                                  </h4>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {new Date(currentEmail.received_at).toLocaleString('es-AR')}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col gap-0.5 text-xs">
+                                  <p className="text-slate-500 font-medium">
+                                    De: <strong className="text-slate-700">{currentEmail.sender_name}</strong> &lt;{currentEmail.sender_email}&gt;
+                                  </p>
+                                  <p className="text-slate-400 text-[10px]">
+                                    Para: &lt;{currentEmail.recipient_email}&gt; (Administrador)
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Mail Rich Body */}
+                              <div className="flex-1 overflow-y-auto py-2">
+                                <div 
+                                  className="text-xs text-slate-600 leading-relaxed space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100"
+                                  dangerouslySetInnerHTML={{ __html: currentEmail.body }}
+                                />
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 shrink-0">
+                                <span>Seguridad: Cifrado SSL verificado</span>
+                                <span className="font-mono">ID: {currentEmail.id}</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">

@@ -79,3 +79,16 @@ export interface UserAction {
   created_at: string;
 }
 
+export interface AdminEmail {
+  id: string;
+  sender_name: string;
+  sender_email: string;
+  recipient_email: string;
+  subject: string;
+  body: string;
+  received_at: string;
+  is_read: boolean;
+  type: 'payment_intent' | 'payment_result';
+}
+
+

@@ -23,7 +23,8 @@ interface ProjectDetailProps {
   onUpdateProjectDates: (projectId: string, newStartDate: string, newEndDate: string) => void;
   onSoftDeleteProject: (projectId: string) => void;
   onRestoreProject: (projectId: string) => void;
-  onToggleProjectApproval?: (projectId: string, approve: boolean) => void;
+  onToggleProjectApproval?: (projectId: string, approve: boolean, isAutoMpApproved?: boolean) => void;
+  onSendAdminEmail?: (type: 'payment_intent' | 'payment_result', details: { projectId: string; amount: number; isSuccess?: boolean; paymentId?: string }) => void;
   onEdit?: (project: Project) => void;
   adminFeeMin?: number;
   adminFeeMax?: number;
@@ -47,6 +48,7 @@ export default function ProjectDetail({
   onSoftDeleteProject,
   onRestoreProject,
   onToggleProjectApproval,
+  onSendAdminEmail,
   onEdit,
   adminFeeMin = 50000,
   adminFeeMax = 1000000,
@@ -89,6 +91,7 @@ export default function ProjectDetail({
   } | null>(null);
   const [mpProcessing, setMpProcessing] = React.useState(false);
   const [mpSuccess, setMpSuccess] = React.useState(false);
+  const [generatedMpPaymentId, setGeneratedMpPaymentId] = React.useState('');
   const [selectedContributionMethod, setSelectedContributionMethod] = React.useState<Record<string, 'transfer' | 'mercadopago'>>({});
 
   // Date and status management states
@@ -102,8 +105,8 @@ export default function ProjectDetail({
     if (!activeMpPayment || !activeUser) return;
 
     if (activeMpPayment.type === 'tk_fee') {
-      // Approve project
-      onToggleProjectApproval?.(project.id, true);
+      // Approve project automatically (VIGENTE)
+      onToggleProjectApproval?.(project.id, true, true);
       alert(`¡Pago de TK Servicio por $${activeMpPayment.amount.toLocaleString('es-AR')} procesado con éxito mediante Mercado Pago! El proyecto/evento se encuentra ahora en estado VIGENTE y habilitado para recibir aportes de forma instantánea.`);
     } else if (activeMpPayment.type === 'contribution' && activeMpPayment.componentId) {
       const compId = activeMpPayment.componentId;
@@ -975,10 +978,14 @@ export default function ProjectDetail({
                         type: 'tk_fee',
                         amount: fee
                       });
+                      onSendAdminEmail?.('payment_intent', {
+                        projectId: project.id,
+                        amount: fee
+                      });
                     }}
                     className="w-full bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-[11px] py-2.5 px-3 rounded-xl transition cursor-pointer text-center shadow-xs flex items-center justify-center gap-1.5"
                   >
-                    💳 Pagar TK Servicio con Mercado Pago
+                    Pagar TK Servicio con Mercado Pago
                   </button>
                   <p className="text-[9px] text-slate-400 mt-1 text-center">
                     Simula la pasarela de Mercado Pago para habilitar la campaña instantáneamente.
@@ -1363,9 +1370,19 @@ export default function ProjectDetail({
                     <button
                       onClick={() => {
                         setMpProcessing(true);
+                        const paymentId = 'MP-TRANS-' + Math.floor(100000000 + Math.random() * 900000000);
+                        setGeneratedMpPaymentId(paymentId);
                         setTimeout(() => {
                           setMpProcessing(false);
                           setMpSuccess(true);
+                          if (activeMpPayment?.type === 'tk_fee') {
+                            onSendAdminEmail?.('payment_result', {
+                              projectId: project.id,
+                              amount: activeMpPayment.amount,
+                              isSuccess: true,
+                              paymentId: paymentId
+                            });
+                          }
                         }, 2000);
                       }}
                       className="w-full bg-[#009EE3] hover:bg-[#0089c7] text-white font-bold text-xs py-3 rounded-xl transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer border-0"
@@ -1402,7 +1419,7 @@ export default function ProjectDetail({
 
                   <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl w-full text-center">
                     <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wide">ID de Pago Mercado Pago</span>
-                    <span className="text-xs font-mono font-bold text-slate-700">MP-TRANS-{(100000000 + Math.floor(Math.random() * 900000000))}</span>
+                    <span className="text-xs font-mono font-bold text-slate-700">{generatedMpPaymentId || 'MP-TRANS-XXXXXX'}</span>
                   </div>
 
                   <button
