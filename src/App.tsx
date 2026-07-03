@@ -1167,7 +1167,7 @@ export default function App() {
             {isAdmin && (
               <button
                 onClick={() => { setSelectedProjectId(null); setActiveTab('admin'); }}
-                className={`px-3 py-1.5 rounded-lg transition relative ${
+                className={`px-3 py-1.5 rounded-lg transition relative group ${
                   activeTab === 'admin'
                     ? 'bg-blue-50 text-blue-700 font-bold'
                     : 'text-slate-500 hover:text-slate-800'
@@ -1178,6 +1178,15 @@ export default function App() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                 </span>
+                
+                {/* Tooltip explicativo del punto rojo */}
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-56 sm:w-64 transition-all duration-250">
+                  <div className="w-2.5 h-2.5 bg-slate-800 rotate-45 -mb-1 shadow-sm"></div>
+                  <div className="bg-slate-800 text-white text-[10px] sm:text-xs font-normal p-2.5 rounded-xl shadow-xl border border-slate-700 text-center leading-normal">
+                    <span className="font-bold text-red-400 block mb-0.5">● Acciones Pendientes</span>
+                    El punto rojo indica que hay transferencias, aportes o proyectos pendientes de revisión y aprobación administrativa.
+                  </div>
+                </div>
               </button>
             )}
             <button
