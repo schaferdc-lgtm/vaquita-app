@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project, ProjectComponent } from '../types';
-import { Calendar, Hammer, GlassWater, Trophy, HelpCircle, ArrowRight, Layers, DollarSign } from 'lucide-react';
+import { Calendar, Hammer, GlassWater, Trophy, HelpCircle, ArrowRight, Layers, DollarSign, Settings } from 'lucide-react';
 import { getProjectPalette } from '../lib/colors';
 
 interface ProjectCardProps {
@@ -8,9 +8,10 @@ interface ProjectCardProps {
   project: Project;
   components: ProjectComponent[];
   onSelect: () => void;
+  onEdit?: (project: Project) => void;
 }
 
-export default function ProjectCard({ project, components, onSelect }: ProjectCardProps) {
+export default function ProjectCard({ project, components, onSelect, onEdit }: ProjectCardProps) {
   // Get color palette for this project
   const palette = getProjectPalette(project.id);
 
@@ -70,29 +71,51 @@ export default function ProjectCard({ project, components, onSelect }: ProjectCa
         <div>
           {/* Badge & Code */}
           <div className="flex items-center justify-between gap-2 mb-3">
-            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm ${palette.badgeBg}`}>
-              {getCategoryLabel()}
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-sm ${palette.badgeBg}`}>
+                {getCategoryLabel()}
+              </span>
+              {project.is_approved === false && (
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-sm border border-amber-200/60 animate-pulse">
+                  ⚠️ Pendiente OK
+                </span>
+              )}
+            </div>
             <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
               ID: {project.id}
             </span>
           </div>
 
           {/* Project Title */}
-          <div className="flex items-start gap-2.5 mb-2">
-            <div className={`rounded-xl transition-colors shrink-0 overflow-hidden ${project.avatar_url ? 'w-9 h-9 border border-slate-100' : `p-2 ${palette.iconContainer}`}`}>
-              {project.avatar_url ? (
-                <img 
-                  src={project.avatar_url} 
-                  alt={project.name} 
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : getCategoryIcon()}
+          <div className="flex items-start justify-between gap-2.5 mb-2">
+            <div className="flex items-start gap-2.5 flex-1 min-w-0">
+              <div className={`rounded-xl transition-colors shrink-0 overflow-hidden ${project.avatar_url ? 'w-9 h-9 border border-slate-100' : `p-2 ${palette.iconContainer}`}`}>
+                {project.avatar_url ? (
+                  <img 
+                    src={project.avatar_url} 
+                    alt={project.name} 
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : getCategoryIcon()}
+              </div>
+              <h3 className={`font-bold text-slate-800 ${palette.titleHover} transition-colors line-clamp-2 leading-snug flex-1`}>
+                {project.name}
+              </h3>
             </div>
-            <h3 className={`font-bold text-slate-800 ${palette.titleHover} transition-colors line-clamp-2 leading-snug flex-1`}>
-              {project.name}
-            </h3>
+            {onEdit && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(project);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition shrink-0 cursor-pointer"
+                title="Configurar proyecto"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* Project Description */}

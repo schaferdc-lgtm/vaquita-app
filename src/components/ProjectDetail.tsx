@@ -6,7 +6,7 @@ import ProjectReportModal from './ProjectReportModal';
 import { 
   ArrowLeft, Hammer, GlassWater, Trophy, HelpCircle, Info, 
   Coins, Plus, Calendar, Ticket, CheckCircle2, AlertCircle, ShoppingBag, 
-  Building2, ArrowRight, Trash2, HelpCircle as HelpIcon, FileText
+  Building2, ArrowRight, Trash2, HelpCircle as HelpIcon, FileText, Settings
 } from 'lucide-react';
 
 interface ProjectDetailProps {
@@ -20,9 +20,11 @@ interface ProjectDetailProps {
   onDeleteComponent: (componentId: string) => void;
   onApproveContribution: (contributionId: string) => void;
   onRejectContribution: (contributionId: string) => void;
-  onUpdateProjectEndDate: (projectId: string, newEndDate: string) => void;
+  onUpdateProjectDates: (projectId: string, newStartDate: string, newEndDate: string) => void;
   onSoftDeleteProject: (projectId: string) => void;
   onRestoreProject: (projectId: string) => void;
+  onToggleProjectApproval?: (projectId: string, approve: boolean) => void;
+  onEdit?: (project: Project) => void;
 }
 
 export default function ProjectDetail({
@@ -36,9 +38,11 @@ export default function ProjectDetail({
   onDeleteComponent,
   onApproveContribution,
   onRejectContribution,
-  onUpdateProjectEndDate,
+  onUpdateProjectDates,
   onSoftDeleteProject,
   onRestoreProject,
+  onToggleProjectApproval,
+  onEdit,
 }: ProjectDetailProps) {
   // Get color palette for this project
   const palette = getProjectPalette(project.id);
@@ -66,34 +70,36 @@ export default function ProjectDetail({
   const [formError, setFormError] = useState('');
 
   // Date and status management states
+  const [editedStartDate, setEditedStartDate] = useState(project.start_date);
   const [editedEndDate, setEditedEndDate] = useState(project.end_date);
   const [dateUpdateSuccess, setDateUpdateSuccess] = useState(false);
   const [dateUpdateError, setDateUpdateError] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
 
   React.useEffect(() => {
+    setEditedStartDate(project.start_date);
     setEditedEndDate(project.end_date);
     setDateUpdateSuccess(false);
     setDateUpdateError('');
-  }, [project.end_date]);
+  }, [project.start_date, project.end_date]);
 
   const todayStr = new Date().toLocaleDateString('en-CA');
   const isStarted = project.start_date <= todayStr;
   const isExpired = todayStr > project.end_date;
   const isProjectActive = isStarted && !isExpired && !project.is_deleted;
 
-  const handleUpdateEndDate = () => {
+  const handleUpdateProjectDates = () => {
     setDateUpdateSuccess(false);
     setDateUpdateError('');
-    if (!editedEndDate) {
-      setDateUpdateError('La fecha fin no puede estar vacía.');
+    if (!editedStartDate || !editedEndDate) {
+      setDateUpdateError('Las fechas de inicio y fin no pueden estar vacías.');
       return;
     }
-    if (editedEndDate < project.start_date) {
+    if (editedEndDate < editedStartDate) {
       setDateUpdateError('La fecha fin no puede ser anterior a la de inicio.');
       return;
     }
-    onUpdateProjectEndDate(project.id, editedEndDate);
+    onUpdateProjectDates(project.id, editedStartDate, editedEndDate);
     setDateUpdateSuccess(true);
   };
 
@@ -270,6 +276,39 @@ export default function ProjectDetail({
   return (
     <div className="space-y-8 animate-fade-in">
       
+      {/* Project Banner Hero / Propaganda */}
+      {project.banner_url && (
+        <div className="w-full h-48 md:h-64 rounded-3xl overflow-hidden border border-slate-200/60 shadow-sm relative group bg-slate-900">
+          <img 
+            src={project.banner_url} 
+            alt={`Banner de ${project.name}`} 
+            className="w-full h-full object-cover opacity-90 transition duration-700 group-hover:scale-[1.02]"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.target as any).src = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=1200&h=400&auto=format&fit=crop&q=80';
+            }}
+          />
+          {/* Subtle overlay gradient */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 via-slate-900/10 to-transparent"></div>
+          
+          {/* Metadata/Propaganda indicator */}
+          <div className="absolute top-4 right-4 bg-slate-900/85 backdrop-blur-xs text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider border border-white/20 shadow-xs flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
+            <span>Propaganda del Proyecto</span>
+          </div>
+
+          {/* Banner text info display for more context */}
+          <div className="absolute bottom-6 left-6 right-6 text-white pointer-events-none hidden sm:block">
+            <span className="bg-blue-600/90 text-white text-[9px] font-extrabold px-2.5 py-1 rounded-md uppercase tracking-wide">
+              Información del Evento
+            </span>
+            <p className="text-[11px] text-slate-200 mt-1.5 max-w-xl font-medium drop-shadow-sm leading-relaxed">
+              Carga tus aportes abajo para ayudar a financiar el proyecto "{project.name}". ¡Cada aporte cuenta!
+            </p>
+          </div>
+        </div>
+      )}
+      
       {/* Back & Title Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
         <div className="flex items-start gap-4">
@@ -305,6 +344,10 @@ export default function ProjectDetail({
                 <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-md border border-red-200">
                   🗑️ Archivada (Eliminación Lógica)
                 </span>
+              ) : !project.is_approved ? (
+                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 animate-pulse">
+                  ⚠️ Pendiente OK de Administración (No Vigente)
+                </span>
               ) : isExpired ? (
                 <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
                   ⌛ Fuera de vigencia (Finalizado)
@@ -319,7 +362,19 @@ export default function ProjectDetail({
                 </span>
               )}
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">{project.name}</h1>
+            <div className="flex items-center gap-2 mt-1">
+              <h1 className="text-2xl md:text-3xl font-extrabold text-slate-800 tracking-tight">{project.name}</h1>
+              {isOwnerOrAdmin && onEdit && (
+                <button
+                  type="button"
+                  onClick={() => onEdit(project)}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition cursor-pointer"
+                  title="Configurar/Modificar datos del proyecto"
+                >
+                  <Settings className="w-5.5 h-5.5" />
+                </button>
+              )}
+            </div>
             <p className="text-slate-500 text-sm mt-1 max-w-2xl leading-relaxed">{project.description}</p>
             
             {/* Payment Info Badges */}
@@ -667,6 +722,75 @@ export default function ProjectDetail({
             </div>
           </div>
 
+          {/* Crowdfunding Service & OK Final Panel */}
+          <div className={`rounded-2xl border p-6 space-y-4 shadow-sm ${project.is_approved ? 'bg-emerald-50/10 border-emerald-200' : 'bg-amber-50/10 border-amber-200'}`}>
+            <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-50 pb-2.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Coins className={`w-4 h-4 ${project.is_approved ? 'text-emerald-600' : 'text-amber-600'}`} />
+                Vigencia y Servicio de Crowdfounding
+              </span>
+              {project.is_approved ? (
+                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">OK Vigente</span>
+              ) : (
+                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse shrink-0">Pendiente OK</span>
+              )}
+            </h3>
+
+            <div className="space-y-3 text-xs">
+              <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
+                <span className="font-medium text-slate-500">Costo Total del Proyecto</span>
+                <span className="font-bold text-slate-800">${totalCost.toLocaleString('es-AR')}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
+                <span className="font-medium text-slate-500">TK Servicio (1%)</span>
+                <div className="text-right">
+                  <span className="font-bold text-slate-800 block">${Math.max(50000, Math.min(1000000, totalCost * 0.01)).toLocaleString('es-AR')}</span>
+                  <span className="text-[8px] text-slate-400 block font-semibold">(Mín $50k / Máx $1M)</span>
+                </div>
+              </div>
+              <div className="text-[11px] text-slate-600 leading-normal space-y-2">
+                {project.is_approved ? (
+                  <p className="text-emerald-700 font-medium">
+                    ✓ Este proyecto ha sido habilitado por la administración tras verificar el pago del servicio de crowdfunding.
+                  </p>
+                ) : (
+                  <>
+                    <p>
+                      Para habilitar la vigencia y recibir aportes, se debe abonar el servicio realizando una transferencia al alias:
+                    </p>
+                    <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 font-mono text-center text-slate-800 select-all font-bold tracking-wide">
+                      danielschafer.mp
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(50000, Math.min(1000000, totalCost * 0.01)).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* Admin Direct Approval buttons inside Detail view */}
+              {activeUser?.role === 'admin' && (
+                <div className="pt-2 border-t border-slate-100 flex gap-2">
+                  {!project.is_approved ? (
+                    <button
+                      onClick={() => onToggleProjectApproval?.(project.id, true)}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center shadow-xs"
+                    >
+                      Dar OK Final (Aprobar)
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onToggleProjectApproval?.(project.id, false)}
+                      className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-150 font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center"
+                    >
+                      Denegar / Revocar OK
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Configuration & Validity Management (Owner or Admin) */}
           {isOwnerOrAdmin && (
             <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4 shadow-sm">
@@ -678,38 +802,38 @@ export default function ProjectDetail({
               <div className="space-y-3">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                    Fecha de Inicio
+                    Fecha de Inicio (Editable por el Owner/Admin)
                   </label>
                   <input
                     type="date"
-                    disabled
-                    value={project.start_date}
-                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl bg-slate-50 text-slate-400 cursor-not-allowed font-mono"
+                    value={editedStartDate}
+                    onChange={(e) => setEditedStartDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
                     Fecha Fin (Editable por el Owner/Admin)
                   </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="date"
-                      value={editedEndDate}
-                      onChange={(e) => setEditedEndDate(e.target.value)}
-                      className="flex-1 text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono"
-                    />
-                    <button
-                      onClick={handleUpdateEndDate}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 px-3.5 rounded-xl transition cursor-pointer shrink-0"
-                    >
-                      Guardar
-                    </button>
-                  </div>
+                  <input
+                    type="date"
+                    value={editedEndDate}
+                    onChange={(e) => setEditedEndDate(e.target.value)}
+                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white"
+                  />
+                </div>
+                <div className="pt-1">
+                  <button
+                    onClick={handleUpdateProjectDates}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    Guardar Fechas de Vigencia
+                  </button>
                   {dateUpdateSuccess && (
-                    <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Fecha de fin actualizada con éxito.</p>
+                    <p className="text-[10px] text-emerald-600 font-bold mt-1.5 text-center">✓ Fechas de vigencia actualizadas con éxito.</p>
                   )}
                   {dateUpdateError && (
-                    <p className="text-[10px] text-rose-600 font-bold mt-1">✗ {dateUpdateError}</p>
+                    <p className="text-[10px] text-rose-600 font-bold mt-1.5 text-center">✗ {dateUpdateError}</p>
                   )}
                 </div>
               </div>

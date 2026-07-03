@@ -34,6 +34,9 @@ export const INITIAL_PROJECTS: Project[] = [
     start_date: '2026-06-01',
     end_date: '2026-12-31',
     is_deleted: false,
+    is_approved: true,
+    avatar_url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=150&h=150',
+    banner_url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1200&h=400',
   },
   {
     id: 'FIESTA-FIN',
@@ -47,6 +50,9 @@ export const INITIAL_PROJECTS: Project[] = [
     start_date: '2026-06-01',
     end_date: '2026-12-31',
     is_deleted: false,
+    is_approved: true,
+    avatar_url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=150&h=150',
+    banner_url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=1200&h=400',
   }
 ];
 

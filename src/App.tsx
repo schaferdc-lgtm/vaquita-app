@@ -55,6 +55,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ProjectCategory | 'all'>('all');
 
+  // --- ADMIN APPROVAL BOARD FILTER & SORT STATE ---
+  const [adminSearchQuery, setAdminSearchQuery] = useState('');
+  const [adminStatusFilter, setAdminStatusFilter] = useState<'all' | 'approved' | 'pending'>('all');
+  const [adminSortColumn, setAdminSortColumn] = useState<'id' | 'owner' | 'title' | 'startDate'>('id');
+  const [adminSortDirection, setAdminSortDirection] = useState<'asc' | 'desc'>('asc');
+
   // --- MODALS & NOTIFICATIONS ---
   const [activeCoupon, setActiveCoupon] = useState<Contribution | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -68,13 +74,34 @@ export default function App() {
   const [newProjectComponentsInput, setNewProjectComponentsInput] = useState<string>(
     '100 Bolsones de Arena, Precio: 50000\n20 Bolsa de Cemento, Precio: 30000\n20 Bolsa de Cal, Precio: 40000\n3500 Ladrillos, Precio: 150'
   );
+  const [newProjectComponentsGrid, setNewProjectComponentsGrid] = useState<{ name: string; quantity: number; price: number }[]>([
+    { name: 'Bolsones de Arena', quantity: 100, price: 50000 },
+    { name: 'Bolsa de Cemento', quantity: 20, price: 30000 },
+    { name: 'Bolsa de Cal', quantity: 20, price: 40000 },
+    { name: 'Ladrillos', quantity: 3500, price: 150 }
+  ]);
   const [createProjectError, setCreateProjectError] = useState('');
   const [newProjectAvatarUrl, setNewProjectAvatarUrl] = useState('');
+  const [newProjectBannerUrl, setNewProjectBannerUrl] = useState('');
   const [newProjectAlias, setNewProjectAlias] = useState('');
   const [newProjectCbu, setNewProjectCbu] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [newProjectStartDate, setNewProjectStartDate] = useState('2026-06-01');
   const [newProjectEndDate, setNewProjectEndDate] = useState('2026-12-31');
+
+  // --- PROJECT EDITING FORM STATE ---
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [editProjectName, setEditProjectName] = useState('');
+  const [editProjectDesc, setEditProjectDesc] = useState('');
+  const [editProjectCategory, setEditProjectCategory] = useState<ProjectCategory>('construction');
+  const [editProjectComponentsGrid, setEditProjectComponentsGrid] = useState<{ id?: string; name: string; quantity: number; price: number }[]>([]);
+  const [editProjectError, setEditProjectError] = useState('');
+  const [editProjectAvatarUrl, setEditProjectAvatarUrl] = useState('');
+  const [editProjectBannerUrl, setEditProjectBannerUrl] = useState('');
+  const [editProjectAlias, setEditProjectAlias] = useState('');
+  const [editProjectCbu, setEditProjectCbu] = useState('');
+  const [editProjectStartDate, setEditProjectStartDate] = useState('2026-06-01');
+  const [editProjectEndDate, setEditProjectEndDate] = useState('2026-12-31');
 
   // 1. Initial Load & LocalStorage Hydration
   useEffect(() => {
@@ -147,6 +174,24 @@ export default function App() {
           if (updated.is_deleted === undefined) {
             updated.is_deleted = false;
             migrated = true;
+          }
+          if (updated.is_approved === undefined) {
+            updated.is_approved = true;
+            migrated = true;
+          }
+          if (!updated.banner_url) {
+            const initialMatch = INITIAL_PROJECTS.find(ip => ip.id === updated.id);
+            if (initialMatch && initialMatch.banner_url) {
+              updated.banner_url = initialMatch.banner_url;
+              migrated = true;
+            }
+          }
+          if (!updated.avatar_url) {
+            const initialMatch = INITIAL_PROJECTS.find(ip => ip.id === updated.id);
+            if (initialMatch && initialMatch.avatar_url) {
+              updated.avatar_url = initialMatch.avatar_url;
+              migrated = true;
+            }
           }
           return updated;
         });
@@ -606,27 +651,22 @@ export default function App() {
       return;
     }
 
-    // Parse components input
-    // Format expected: Quantity Name, Precio: UnitPrice
-    // e.g.: 100 Bolsones de Arena, Precio: 50000
-    const lines = newProjectComponentsInput.split('\n').filter(l => l.trim().length > 0);
+    // Process components from the interactive grid
     const parsedComponents: ProjectComponent[] = [];
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      const match = line.match(/^(\d+)\s+([^,]+),\s*(?:Precio|price|precio|Price)\s*:\s*(\d+(\.\d+)?)$/i);
-      
-      if (!match) {
-        setCreateProjectError(`Error de formato en la línea ${i + 1}: "${line}". Debe ser: "Cantidad Nombre, Precio: Valor"`);
+    for (let i = 0; i < newProjectComponentsGrid.length; i++) {
+      const item = newProjectComponentsGrid[i];
+      const name = item.name.trim();
+      const qty = item.quantity;
+      const price = item.price;
+
+      if (!name) {
+        setCreateProjectError(`Error en el ítem ${i + 1}: El nombre no puede estar vacío.`);
         return;
       }
 
-      const qty = parseInt(match[1]);
-      const name = match[2].trim();
-      const price = parseFloat(match[3]);
-
       if (qty <= 0 || price <= 0) {
-        setCreateProjectError(`La cantidad y el precio en la línea ${i + 1} deben ser mayores a cero.`);
+        setCreateProjectError(`Error en el ítem "${name}": La cantidad y el precio deben ser mayores a cero.`);
         return;
       }
 
@@ -647,7 +687,7 @@ export default function App() {
     }
 
     if (parsedComponents.length === 0) {
-      setCreateProjectError('Debe ingresar al menos un insumo o requerimiento.');
+      setCreateProjectError('Debe ingresar al menos un insumo o requerimiento en la grilla.');
       return;
     }
 
@@ -669,11 +709,13 @@ export default function App() {
       owner_id: activeUser?.id || 'user-owner-1',
       created_at: new Date().toISOString(),
       avatar_url: newProjectAvatarUrl || undefined,
+      banner_url: newProjectBannerUrl || undefined,
       payment_alias: newProjectAlias.trim() || undefined,
       payment_cbu: newProjectCbu.trim() || undefined,
       start_date: newProjectStartDate,
       end_date: newProjectEndDate,
       is_deleted: false,
+      is_approved: false,
     };
 
     const updatedProjects = [...projects, newProject];
@@ -697,13 +739,168 @@ export default function App() {
     setNewProjectName('');
     setNewProjectDesc('');
     setNewProjectAvatarUrl('');
+    setNewProjectBannerUrl('');
     setNewProjectAlias('');
     setNewProjectCbu('');
-    setNewProjectComponentsInput('100 Bolsones de Arena, Precio: 50000\n20 Bolsa de Cemento, Precio: 30000');
+    setNewProjectComponentsGrid([
+      { name: 'Bolsones de Arena', quantity: 100, price: 50000 },
+      { name: 'Bolsa de Cemento', quantity: 20, price: 30000 },
+      { name: 'Bolsa de Cal', quantity: 20, price: 40000 },
+      { name: 'Ladrillos', quantity: 3500, price: 150 }
+    ]);
     setNewProjectStartDate('2026-06-01');
     setNewProjectEndDate('2026-12-31');
     setShowCreateProjectForm(false);
     showAlert('success', `Proyecto "${newProject.name}" creado con ID: ${sanitizedId}`);
+  };
+
+  // Open Edit Project modal/form with prepopulated values
+  const handleOpenEditProject = (project: Project) => {
+    setEditingProject(project);
+    setEditProjectName(project.name);
+    setEditProjectDesc(project.description);
+    setEditProjectCategory(project.category);
+    setEditProjectAvatarUrl(project.avatar_url || '');
+    setEditProjectBannerUrl(project.banner_url || '');
+    setEditProjectAlias(project.payment_alias || '');
+    setEditProjectCbu(project.payment_cbu || '');
+    setEditProjectStartDate(project.start_date);
+    setEditProjectEndDate(project.end_date);
+    
+    // Find components for this project
+    const projectComps = components.filter((c) => c.project_id === project.id);
+    setEditProjectComponentsGrid(
+      projectComps.map((c) => ({
+        id: c.id,
+        name: c.name,
+        quantity: c.quantity,
+        price: c.unit_price,
+      }))
+    );
+    setEditProjectError('');
+  };
+
+  // Save modified project and its supplies/requirements grid
+  const handleSaveEditProject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject) return;
+
+    if (!editProjectName.trim()) {
+      setEditProjectError('El nombre del proyecto es obligatorio.');
+      return;
+    }
+    if (!editProjectDesc.trim()) {
+      setEditProjectError('La descripción del proyecto es obligatoria.');
+      return;
+    }
+    if (!editProjectStartDate || !editProjectEndDate) {
+      setEditProjectError('Por favor ingrese las fechas de inicio y fin del proyecto.');
+      return;
+    }
+    if (editProjectStartDate > editProjectEndDate) {
+      setEditProjectError('La fecha de inicio no puede ser posterior a la fecha de fin.');
+      return;
+    }
+
+    // Process components grid
+    const parsedComps: ProjectComponent[] = [];
+    for (let i = 0; i < editProjectComponentsGrid.length; i++) {
+      const item = editProjectComponentsGrid[i];
+      const name = item.name.trim();
+      const qty = item.quantity;
+      const price = item.price;
+
+      if (!name) {
+        setEditProjectError(`Error en el ítem ${i + 1}: El nombre no puede estar vacío.`);
+        return;
+      }
+      if (qty <= 0 || price <= 0) {
+        setEditProjectError(`Error en el ítem "${name}": La cantidad y el precio deben ser mayores a cero.`);
+        return;
+      }
+
+      const allowPartial = price > 100000 && qty < 3;
+
+      // Check if it already exists or if it's new
+      if (item.id) {
+        const existingComp = components.find(c => c.id === item.id);
+        if (existingComp) {
+          const alreadyFundedUnits = Math.max(0, existingComp.quantity - existingComp.remaining_quantity);
+          const remaining = Math.max(0, qty - alreadyFundedUnits);
+
+          parsedComps.push({
+            ...existingComp,
+            name,
+            unit_price: price,
+            quantity: qty,
+            remaining_quantity: remaining,
+            allow_partial: allowPartial,
+            total_price: qty * price,
+          });
+        } else {
+          parsedComps.push({
+            id: item.id,
+            project_id: editingProject.id,
+            name,
+            unit_price: price,
+            quantity: qty,
+            remaining_quantity: qty,
+            funded_amount: 0,
+            allow_partial: allowPartial,
+            total_price: qty * price,
+          });
+        }
+      } else {
+        parsedComps.push({
+          id: `comp-${editingProject.id}-${i}-${Math.random().toString(36).substring(2, 5)}`,
+          project_id: editingProject.id,
+          name,
+          unit_price: price,
+          quantity: qty,
+          remaining_quantity: qty,
+          funded_amount: 0,
+          allow_partial: allowPartial,
+          total_price: qty * price,
+        });
+      }
+    }
+
+    if (parsedComps.length === 0) {
+      setEditProjectError('Debe ingresar al menos un insumo o requerimiento en la grilla.');
+      return;
+    }
+
+    const updatedProject: Project = {
+      ...editingProject,
+      name: editProjectName.trim(),
+      description: editProjectDesc.trim(),
+      category: editProjectCategory,
+      avatar_url: editProjectAvatarUrl || undefined,
+      banner_url: editProjectBannerUrl || undefined,
+      payment_alias: editProjectAlias.trim() || undefined,
+      payment_cbu: editProjectCbu.trim() || undefined,
+      start_date: editProjectStartDate,
+      end_date: editProjectEndDate,
+    };
+
+    const updatedProjects = projects.map(p => p.id === editingProject.id ? updatedProject : p);
+    const otherProjectsComps = components.filter(c => c.project_id !== editingProject.id);
+    const updatedComponents = [...otherProjectsComps, ...parsedComps];
+
+    setProjects(updatedProjects);
+    setComponents(updatedComponents);
+    syncToLocalStorage(updatedProjects, updatedComponents, contributions);
+
+    if (activeUser) {
+      logUserAction(
+        activeUser.email,
+        'MODIFICACION_PROYECTO',
+        `Modificó el proyecto "${updatedProject.name}" con ID: ${editingProject.id}`
+      );
+    }
+
+    setEditingProject(null);
+    showAlert('success', `Proyecto "${updatedProject.name}" modificado con éxito.`);
   };
 
   // Delete project entirely (Admin only)
@@ -739,11 +936,11 @@ export default function App() {
     }
   };
 
-  // Update Project End Date (Owner or Admin)
-  const handleUpdateProjectEndDate = (projectId: string, newEndDate: string) => {
+  // Update Project Dates (Owner or Admin)
+  const handleUpdateProjectDates = (projectId: string, newStartDate: string, newEndDate: string) => {
     const updated = projects.map((p) => {
       if (p.id === projectId) {
-        return { ...p, end_date: newEndDate };
+        return { ...p, start_date: newStartDate, end_date: newEndDate };
       }
       return p;
     });
@@ -754,10 +951,36 @@ export default function App() {
       logUserAction(
         activeUser.email,
         'MODIFICACION_VIGENCIA',
-        `Modificó la fecha fin del proyecto ${projectId} a ${newEndDate}`
+        `Modificó la vigencia del proyecto ${projectId} (Inicio: ${newStartDate}, Fin: ${newEndDate})`
       );
     }
-    showAlert('success', 'La fecha de finalización se ha actualizado correctamente.');
+    showAlert('success', 'Las fechas de vigencia se han actualizado correctamente.');
+  };
+
+  // Toggle Project Approval (OK final de vigencia) - Admin only
+  const handleToggleProjectApproval = (projectId: string, approve: boolean) => {
+    if (activeUser?.role !== 'admin') {
+      showAlert('error', 'Solo los administradores pueden autorizar vigencia de proyectos.');
+      return;
+    }
+
+    const updated = projects.map((p) => {
+      if (p.id === projectId) {
+        return { ...p, is_approved: approve };
+      }
+      return p;
+    });
+    setProjects(updated);
+    syncToLocalStorage(updated, components, contributions);
+
+    if (activeUser) {
+      logUserAction(
+        activeUser.email,
+        approve ? 'APROBACION_VIGENCIA_PROYECTO' : 'RECHAZO_VIGENCIA_PROYECTO',
+        `${approve ? 'Aprobó' : 'Rechazó'} el OK final de vigencia del proyecto ${projectId}`
+      );
+    }
+    showAlert('success', approve ? 'Vigencia aprobada exitosamente (OK Final de Crowdfunding).' : 'Se ha rechazado/denegado la vigencia del proyecto.');
   };
 
   // Soft delete project (Owner or Admin)
@@ -1020,9 +1243,11 @@ export default function App() {
             onDeleteComponent={handleDeleteComponent}
             onApproveContribution={handleApproveContribution}
             onRejectContribution={handleRejectContribution}
-            onUpdateProjectEndDate={handleUpdateProjectEndDate}
+            onUpdateProjectDates={handleUpdateProjectDates}
             onSoftDeleteProject={handleSoftDeleteProject}
             onRestoreProject={handleRestoreProject}
+            onToggleProjectApproval={handleToggleProjectApproval}
+            onEdit={handleOpenEditProject}
           />
         ) : (
           <>
@@ -1030,45 +1255,47 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="space-y-8">
                 
-                {/* Aggregate Progression Panel (Main Hero) */}
-                <section className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xs grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                  <div className="md:col-span-7 space-y-4">
-                    <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-blue-100">
-                      Progreso Global Comunitario
-                    </span>
-                    <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight leading-tight">
-                      Aporta a proyectos, impulsa tu comunidad
-                    </h2>
-                    <p className="text-slate-500 text-xs md:text-sm leading-relaxed max-w-xl">
-                      Plataforma de crowdfunding transparente. Los dueños listan materiales o servicios, y los aportantes colaboran comprando unidades o aportando un porcentaje para insumos costosos.
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-5 bg-slate-50/50 rounded-2xl p-6 border border-slate-100 space-y-4">
-                    <div className="flex justify-between items-end text-xs">
-                      <span className="text-slate-500 font-semibold">Total Recaudado</span>
-                      <span className="text-blue-700 font-extrabold text-sm">{globalProgressPercentage}%</span>
+                {/* Aggregate Progression Panel (Main Hero) - Visible only to Administrator */}
+                {isAdmin && (
+                  <section className="bg-white rounded-3xl p-6 md:p-8 border border-slate-100 shadow-xs grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                    <div className="md:col-span-7 space-y-4">
+                      <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-blue-100">
+                        Progreso Global Comunitario (Solo Visible por Administradores)
+                      </span>
+                      <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight leading-tight">
+                        Aporta a proyectos, impulsa tu comunidad
+                      </h2>
+                      <p className="text-slate-500 text-xs md:text-sm leading-relaxed max-w-xl">
+                        Plataforma de crowdfunding transparente. Los dueños listan materiales o servicios, y los aportantes colaboran comprando unidades o aportando un porcentaje para insumos costosos.
+                      </p>
                     </div>
 
-                    <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden border border-slate-300/20">
-                      <div 
-                        className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-700"
-                        style={{ width: `${globalProgressPercentage}%` }}
-                      ></div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 text-xs pt-2">
-                      <div>
-                        <p className="text-slate-400 font-medium uppercase tracking-wider text-[9px]">Aportado Global</p>
-                        <p className="text-sm font-bold text-slate-800">${globalFundedFunding.toLocaleString('es-AR')}</p>
+                    <div className="md:col-span-5 bg-slate-50/50 rounded-2xl p-6 border border-slate-100 space-y-4">
+                      <div className="flex justify-between items-end text-xs">
+                        <span className="text-slate-500 font-semibold">Total Recaudado</span>
+                        <span className="text-blue-700 font-extrabold text-sm">{globalProgressPercentage}%</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-slate-400 font-medium uppercase tracking-wider text-[9px]">Meta Financiar</p>
-                        <p className="text-sm font-bold text-blue-800">${globalRequiredFunding.toLocaleString('es-AR')}</p>
+
+                      <div className="w-full bg-slate-200 h-3 rounded-full overflow-hidden border border-slate-300/20">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-700"
+                          style={{ width: `${globalProgressPercentage}%` }}
+                        ></div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-xs pt-2">
+                        <div>
+                          <p className="text-slate-400 font-medium uppercase tracking-wider text-[9px]">Aportado Global</p>
+                          <p className="text-sm font-bold text-slate-800">${globalFundedFunding.toLocaleString('es-AR')}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-slate-400 font-medium uppercase tracking-wider text-[9px]">Meta Financiar</p>
+                          <p className="text-sm font-bold text-blue-800">${globalRequiredFunding.toLocaleString('es-AR')}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </section>
+                  </section>
+                )}
 
                 {/* Filters, Search and Actions bar */}
                 <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
@@ -1310,6 +1537,82 @@ export default function App() {
                         </div>
                       </div>
 
+                      {/* Banner del Proyecto */}
+                      <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                          Banner del Proyecto o Evento (Panorámica / Propaganda)
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Se mostrará como cabecera/propaganda del proyecto cuando los aportantes ingresen a colaborar. 
+                          <span className="font-semibold block mt-1 text-blue-700 bg-blue-50/50 p-1.5 rounded-lg border border-blue-100/55">
+                            💡 Formato Recomendado: Imagen panorámica u horizontal apaisada (proporción 16:9 o 3:1) en formato <strong>JPG, PNG o WebP</strong> (ej: 1200x400 px) para un ajuste impecable.
+                          </span>
+                        </p>
+                        
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">
+                              URL del Banner del Proyecto
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Ej: https://images.unsplash.com/... o enlace de propaganda"
+                              value={newProjectBannerUrl}
+                              onChange={(e) => setNewProjectBannerUrl(e.target.value)}
+                              className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                            <div>
+                              <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1.5">
+                                Banners Rápidos de Muestra
+                              </label>
+                              <div className="flex gap-2">
+                                {[
+                                  { name: 'Obras/Club', url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1200&h=400' },
+                                  { name: 'Fiesta/Fin', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=1200&h=400' },
+                                  { name: 'Concierto/Show', url: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&q=80&w=1200&h=400' }
+                                ].map((preset) => (
+                                  <button
+                                    key={preset.name}
+                                    type="button"
+                                    onClick={() => {
+                                      setNewProjectBannerUrl(preset.url);
+                                      showAlert('success', `Banner predefinido "${preset.name}" seleccionado.`);
+                                    }}
+                                    className={`text-[9px] px-3 py-1.5 rounded-lg border font-bold transition cursor-pointer ${
+                                      newProjectBannerUrl === preset.url 
+                                        ? 'bg-blue-600 border-blue-600 text-white' 
+                                        : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                    }`}
+                                  >
+                                    {preset.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {newProjectBannerUrl && (
+                              <div className="space-y-1">
+                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Vista Previa del Banner:</span>
+                                <div className="h-16 rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                                  <img 
+                                    src={newProjectBannerUrl} 
+                                    alt="Preview Banner" 
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      (e.target as any).src = 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=400&h=150&auto=format&fit=crop&q=80';
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Avatar del Proyecto */}
                       <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
@@ -1428,21 +1731,142 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Itemized list of components generator */}
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
-                            Lista de Requerimientos e Insumos (Un componente por línea)
-                          </label>
-                          <span className="text-[9px] text-slate-400">Format: "Cantidad Nombre, Precio: Valor"</span>
+                      {/* Interactive Grid of requirements/supplies */}
+                      <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/40 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                          <div>
+                            <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wide">
+                              Grilla de Requerimientos e Insumos del Proyecto
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5">
+                              Defina cada uno de los insumos o servicios que necesita financiar en esta grilla con las columnas necesarias.
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewProjectComponentsGrid([
+                                  ...newProjectComponentsGrid,
+                                  { name: '', quantity: 1, price: 1000 }
+                                ]);
+                              }}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Agregar Ítem</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm('¿Desea vaciar todos los elementos de la grilla?')) {
+                                  setNewProjectComponentsGrid([]);
+                                }
+                              }}
+                              className="px-2.5 py-1.5 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200 text-slate-600 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Vaciar</span>
+                            </button>
+                          </div>
                         </div>
-                        <textarea
-                          rows={4}
-                          value={newProjectComponentsInput}
-                          onChange={(e) => setNewProjectComponentsInput(e.target.value)}
-                          placeholder="100 Bolsas de Arena, Precio: 50000&#10;20 Bolsa de Cemento, Precio: 30000"
-                          className="w-full text-xs font-mono p-3 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-slate-50"
-                        />
+
+                        {newProjectComponentsGrid.length === 0 ? (
+                          <div className="text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">
+                            <p className="text-xs text-slate-400 font-medium">La grilla está vacía. Presione "Agregar Ítem" para comenzar.</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-xl border border-slate-150 bg-white">
+                            <table className="w-full text-left border-collapse text-xs">
+                              <thead>
+                                <tr className="bg-slate-50 border-b border-slate-150 text-slate-500 font-bold">
+                                  <th className="py-2.5 px-3 w-10 text-center">#</th>
+                                  <th className="py-2.5 px-3 min-w-[200px]">Insumo / Servicio Requerido</th>
+                                  <th className="py-2.5 px-3 w-28">Cantidad</th>
+                                  <th className="py-2.5 px-3 w-36">Precio Unitario ($)</th>
+                                  <th className="py-2.5 px-3 w-32 text-right">Total Est.</th>
+                                  <th className="py-2.5 px-3 w-16 text-center">Acción</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-medium">
+                                {newProjectComponentsGrid.map((item, idx) => (
+                                  <tr key={idx} className="hover:bg-slate-50/55 transition-colors">
+                                    <td className="py-2 px-3 text-slate-400 text-center font-mono font-bold">
+                                      {idx + 1}
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="text"
+                                        placeholder="Ej: Bolsas de Cemento Loma Negra"
+                                        value={item.name}
+                                        onChange={(e) => {
+                                          const updated = [...newProjectComponentsGrid];
+                                          updated[idx].name = e.target.value;
+                                          setNewProjectComponentsGrid(updated);
+                                        }}
+                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-slate-50/30"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        placeholder="1"
+                                        value={item.quantity || ''}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value);
+                                          const updated = [...newProjectComponentsGrid];
+                                          updated[idx].quantity = isNaN(val) ? 0 : val;
+                                          setNewProjectComponentsGrid(updated);
+                                        }}
+                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-slate-50/30 font-semibold"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        placeholder="1000"
+                                        value={item.price || ''}
+                                        onChange={(e) => {
+                                          const val = parseFloat(e.target.value);
+                                          const updated = [...newProjectComponentsGrid];
+                                          updated[idx].price = isNaN(val) ? 0 : val;
+                                          setNewProjectComponentsGrid(updated);
+                                        }}
+                                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-slate-50/30 font-semibold"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3 text-right font-bold text-slate-700 font-mono">
+                                      ${((item.quantity || 0) * (item.price || 0)).toLocaleString('es-AR')}
+                                    </td>
+                                    <td className="py-2 px-3 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          const updated = newProjectComponentsGrid.filter((_, i) => i !== idx);
+                                          setNewProjectComponentsGrid(updated);
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                                        title="Eliminar fila"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+
+                            {/* Summary row */}
+                            <div className="bg-slate-50 p-3 flex justify-between items-center border-t border-slate-150 font-extrabold text-slate-800">
+                              <span className="text-[10px] uppercase text-slate-500">Monto Total Estimado del Proyecto:</span>
+                              <span className="text-sm font-black text-blue-700 font-mono">
+                                ${newProjectComponentsGrid.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0).toLocaleString('es-AR')}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {createProjectError && (
@@ -1483,6 +1907,7 @@ export default function App() {
                         project={p}
                         components={components}
                         onSelect={() => setSelectedProjectId(p.id)}
+                        onEdit={(activeUser?.role === 'admin' || activeUser?.id === p.owner_id) ? handleOpenEditProject : undefined}
                       />
                     ))
                   )}
@@ -1502,6 +1927,272 @@ export default function App() {
                       <ShieldAlert className="w-5 h-5 text-red-500" /> Consola de Administración (Daniel Schafer)
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">Supervisión absoluta de proyectos de construcción, fiestas, y la gestión de cupones emitidos.</p>
+                  </div>
+                </div>
+
+                {/* BOARD FOR PROJECT APPROVALS & SERVICE FEE VERIFICATION (TK SERVICIO) */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">
+                      <div className="p-1 bg-amber-50 rounded-lg border border-amber-200">
+                        <Database className="w-4 h-4 text-amber-600" />
+                      </div>
+                      Habilitación de Proyectos y Validación de Pago de Servicio (Vigencia Final)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-normal">
+                      Cada proyecto requiere el pago del servicio de CROWDFOUNDING por un valor del <strong>1% del total</strong> del presupuesto (con un tope mínimo de <strong>$50.000</strong> y un máximo de <strong>$1.000.000</strong>) transferido al alias <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded select-all font-bold">danielschafer.mp</strong>. Valide la transferencia aquí para dar el OK final y poner en vigencia el evento/proyecto.
+                    </p>
+                  </div>
+
+                  {/* Search, Filter bar */}
+                  <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div className="flex-1 relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        id="admin-approval-search"
+                        type="text"
+                        placeholder="Buscar por Título o Fecha de Inicio (ej: 01/06/2026 o 2026-06-01)..."
+                        value={adminSearchQuery}
+                        onChange={(e) => setAdminSearchQuery(e.target.value)}
+                        className="w-full text-xs pl-9 pr-4 py-2 border border-slate-200 rounded-xl bg-white focus:outline-hidden focus:border-blue-500 font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label htmlFor="admin-approval-filter" className="text-xs font-semibold text-slate-500 whitespace-nowrap">
+                        Filtrar por Task:
+                      </label>
+                      <select
+                        id="admin-approval-filter"
+                        value={adminStatusFilter}
+                        onChange={(e) => setAdminStatusFilter(e.target.value as any)}
+                        className="text-xs bg-white border border-slate-200 rounded-xl px-3 py-2 focus:outline-hidden focus:border-blue-500 font-medium cursor-pointer"
+                      >
+                        <option value="all">Todas las Tasks</option>
+                        <option value="approved">OK Vigente (Aprobados)</option>
+                        <option value="pending">Pendientes de OK</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-150 text-slate-400 font-bold uppercase tracking-wider text-[9px] bg-slate-50/50">
+                          <th className="py-2.5 px-3">
+                            <button
+                              id="sort-btn-id"
+                              onClick={() => {
+                                if (adminSortColumn === 'id') {
+                                  setAdminSortDirection(adminSortDirection === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setAdminSortColumn('id');
+                                  setAdminSortDirection('asc');
+                                }
+                              }}
+                              className="hover:text-slate-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer focus:outline-hidden text-left"
+                            >
+                              ID PROY/EVENTO {adminSortColumn === 'id' ? (adminSortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                            </button>
+                          </th>
+                          <th className="py-2.5 px-3">
+                            <button
+                              id="sort-btn-owner"
+                              onClick={() => {
+                                if (adminSortColumn === 'owner') {
+                                  setAdminSortDirection(adminSortDirection === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setAdminSortColumn('owner');
+                                  setAdminSortDirection('asc');
+                                }
+                              }}
+                              className="hover:text-slate-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer focus:outline-hidden text-left"
+                            >
+                              OWNER {adminSortColumn === 'owner' ? (adminSortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                            </button>
+                          </th>
+                          <th className="py-2.5 px-3">
+                            <button
+                              id="sort-btn-title"
+                              onClick={() => {
+                                if (adminSortColumn === 'title') {
+                                  setAdminSortDirection(adminSortDirection === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setAdminSortColumn('title');
+                                  setAdminSortDirection('asc');
+                                }
+                              }}
+                              className="hover:text-slate-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer focus:outline-hidden text-left"
+                            >
+                              Título {adminSortColumn === 'title' ? (adminSortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                            </button>
+                          </th>
+                          <th className="py-2.5 px-3">
+                            <button
+                              id="sort-btn-startdate"
+                              onClick={() => {
+                                if (adminSortColumn === 'startDate') {
+                                  setAdminSortDirection(adminSortDirection === 'asc' ? 'desc' : 'asc');
+                                } else {
+                                  setAdminSortColumn('startDate');
+                                  setAdminSortDirection('asc');
+                                }
+                              }}
+                              className="hover:text-slate-700 font-bold uppercase tracking-wider flex items-center gap-1 cursor-pointer focus:outline-hidden text-left"
+                            >
+                              Fec Inicio {adminSortColumn === 'startDate' ? (adminSortDirection === 'asc' ? '▲' : '▼') : '↕'}
+                            </button>
+                          </th>
+                          <th className="py-2.5 px-3">Fec Fin</th>
+                          <th className="py-2.5 px-3 text-right">Total Presupuestado</th>
+                          <th className="py-2.5 px-3 text-right bg-amber-50/20 text-amber-900 border-x border-amber-100/10">SERVICIO</th>
+                          <th className="py-2.5 px-3 text-center">Task (Acción Admin)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(() => {
+                          // 1. Filter
+                          const filtered = projects.filter((p) => {
+                            const matchSearch = adminSearchQuery.trim() === '' || 
+                              p.name.toLowerCase().includes(adminSearchQuery.toLowerCase()) ||
+                              p.start_date.includes(adminSearchQuery) ||
+                              p.start_date.split('-').reverse().join('/').includes(adminSearchQuery);
+
+                            const isApprovedBool = p.is_approved === true;
+                            const matchStatus = adminStatusFilter === 'all' ||
+                              (adminStatusFilter === 'approved' && isApprovedBool) ||
+                              (adminStatusFilter === 'pending' && !isApprovedBool);
+
+                            return matchSearch && matchStatus;
+                          });
+
+                          // 2. Sort
+                          const sorted = [...filtered].sort((a, b) => {
+                            let valueA: any = '';
+                            let valueB: any = '';
+
+                            switch (adminSortColumn) {
+                              case 'id':
+                                valueA = a.id.toLowerCase();
+                                valueB = b.id.toLowerCase();
+                                break;
+                              case 'owner':
+                                const ownerA = users.find(u => u.id === a.owner_id)?.full_name || '';
+                                const ownerB = users.find(u => u.id === b.owner_id)?.full_name || '';
+                                valueA = ownerA.toLowerCase();
+                                valueB = ownerB.toLowerCase();
+                                break;
+                              case 'title':
+                                valueA = a.name.toLowerCase();
+                                valueB = b.name.toLowerCase();
+                                break;
+                              case 'startDate':
+                                valueA = a.start_date;
+                                valueB = b.start_date;
+                                break;
+                              default:
+                                valueA = a.id.toLowerCase();
+                                valueB = b.id.toLowerCase();
+                            }
+
+                            if (valueA < valueB) return adminSortDirection === 'asc' ? -1 : 1;
+                            if (valueA > valueB) return adminSortDirection === 'asc' ? 1 : -1;
+                            return 0;
+                          });
+
+                          if (sorted.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={8} className="py-8 text-center text-slate-400 font-medium">
+                                  No se encontraron proyectos con los filtros de búsqueda especificados.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return sorted.map((p) => {
+                            const pComps = components.filter((c) => c.project_id === p.id);
+                            const totalCost = pComps.reduce((sum, c) => sum + c.total_price, 0);
+                            const tkServicioRaw = totalCost * 0.01;
+                            const tkServicio = Math.max(50000, Math.min(1000000, tkServicioRaw));
+                            
+                            const owner = users.find(u => u.id === p.owner_id);
+
+                            return (
+                              <tr key={p.id} className="hover:bg-slate-50/30 transition-colors">
+                                <td className="py-3 px-3 font-mono font-bold text-blue-700">{p.id}</td>
+                                <td className="py-3 px-3">
+                                  {owner ? (
+                                    <div>
+                                      <div className="font-bold text-slate-800">{owner.full_name}</div>
+                                      <div className="text-[10px] text-slate-400 font-mono">{owner.email}</div>
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400 font-mono text-[10px]">{p.owner_id}</span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3 font-semibold text-slate-800 max-w-[180px] truncate" title={p.name}>
+                                  {p.name}
+                                </td>
+                                <td className="py-3 px-3 font-mono text-slate-600">
+                                  {p.start_date.split('-').reverse().join('/')}
+                                </td>
+                                <td className="py-3 px-3 font-mono text-slate-600">
+                                  {p.end_date.split('-').reverse().join('/')}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-slate-700">
+                                  ${totalCost.toLocaleString('es-AR')}
+                                </td>
+                                <td className="py-3 px-3 text-right font-black bg-amber-50/10 text-amber-800 border-x border-amber-100/15">
+                                  <div>
+                                    ${tkServicio.toLocaleString('es-AR')}
+                                  </div>
+                                  <div className="text-[8px] text-slate-400 font-medium">
+                                    (1% de {totalCost > 0 ? `$${totalCost.toLocaleString('es-AR')}` : '$0'})
+                                  </div>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    {p.is_approved ? (
+                                      <>
+                                        <span className="bg-emerald-50 text-emerald-700 font-extrabold text-[9px] uppercase px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-0.5 shrink-0">
+                                          <Check className="w-2.5 h-2.5 text-emerald-600" /> OK Vigente
+                                        </span>
+                                        <button
+                                          onClick={() => handleToggleProjectApproval(p.id, false)}
+                                          className="text-[10px] text-rose-600 hover:bg-rose-50 px-2 py-1 border border-rose-200 rounded font-bold transition cursor-pointer"
+                                        >
+                                          Denegar OK
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <span className="bg-amber-50 text-amber-700 font-extrabold text-[9px] uppercase px-2 py-0.5 rounded border border-amber-200 flex items-center gap-0.5 shrink-0 animate-pulse">
+                                          Pendiente
+                                        </span>
+                                        <div className="flex gap-1">
+                                          <button
+                                            onClick={() => handleToggleProjectApproval(p.id, true)}
+                                            className="text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 rounded font-bold transition cursor-pointer shadow-2xs flex items-center gap-0.5"
+                                          >
+                                            <Check className="w-2.5 h-2.5 text-white" /> Aprobar
+                                          </button>
+                                          <button
+                                            onClick={() => handleToggleProjectApproval(p.id, false)}
+                                            className="text-[10px] text-rose-600 hover:bg-rose-50 px-2 py-1 border border-rose-200 rounded font-bold transition cursor-pointer"
+                                          >
+                                            Denegar
+                                          </button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
@@ -1709,6 +2400,377 @@ export default function App() {
         activeUser={activeUser}
         onRevokeContribution={handleRevokeContribution}
       />
+
+      {/* Edit Project Modal Overlay */}
+      {editingProject && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col animate-slide-up">
+            
+            {/* Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-xs sm:text-sm uppercase tracking-wide flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-blue-600 animate-spin-slow" />
+                  Configurar y Modificar Proyecto: <span className="text-blue-700 font-mono font-bold">{editingProject.id}</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Modifique los campos necesarios para actualizar los datos generales y la grilla de requerimientos.
+                </p>
+              </div>
+              <button 
+                onClick={() => setEditingProject(null)}
+                className="text-slate-400 hover:text-slate-600 font-semibold cursor-pointer text-xs p-1 hover:bg-slate-100 rounded-lg transition"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {/* Form Scrollable Body */}
+            <form onSubmit={handleSaveEditProject} className="flex-1 overflow-y-auto p-6 space-y-6">
+              
+              {/* General Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Nombre del Proyecto
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Remodelación de Vestuarios"
+                    value={editProjectName}
+                    onChange={(e) => setEditProjectName(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Categoría
+                  </label>
+                  <select
+                    value={editProjectCategory}
+                    onChange={(e) => setEditProjectCategory(e.target.value as any)}
+                    className="w-full text-xs px-3 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white cursor-pointer font-medium"
+                  >
+                    <option value="construction">Infraestructura</option>
+                    <option value="party">Fiestas / Cervezas</option>
+                    <option value="event">Eventos</option>
+                    <option value="other">Otros</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-3">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Descripción del Proyecto
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Escriba los detalles y objetivos de este proyecto..."
+                    value={editProjectDesc}
+                    onChange={(e) => setEditProjectDesc(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white leading-normal"
+                  />
+                </div>
+              </div>
+
+              {/* Date Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Fecha de Inicio de Campaña
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editProjectStartDate}
+                    onChange={(e) => setEditProjectStartDate(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Fecha de Fin de Campaña
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editProjectEndDate}
+                    onChange={(e) => setEditProjectEndDate(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Transfer Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border border-slate-150 rounded-2xl p-4 bg-amber-50/30">
+                <div className="md:col-span-2">
+                  <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    Coordenadas de Transferencia (CBU / Alias)
+                  </h4>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    Alias de Pago
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: CLUB.URQUIZA.MP"
+                    value={editProjectAlias}
+                    onChange={(e) => setEditProjectAlias(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-amber-500 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                    CBU o CVU (22 dígitos)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 0000003100012345678901"
+                    value={editProjectCbu}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, '');
+                      setEditProjectCbu(value.substring(0, 22));
+                    }}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-amber-500 bg-white font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Image and Banner Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-slate-100 rounded-2xl bg-slate-50/30">
+                {/* Avatar / Imagen */}
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                    Imagen / Avatar del Proyecto (URL)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: https://images.unsplash.com/..."
+                    value={editProjectAvatarUrl}
+                    onChange={(e) => setEditProjectAvatarUrl(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white"
+                  />
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">Presets rápidos:</span>
+                    <div className="flex gap-1.5 overflow-x-auto py-1">
+                      {[
+                        { name: 'Obras', url: 'https://images.unsplash.com/photo-1504307651254-35680f356dfd?w=150&auto=format&fit=crop&q=80' },
+                        { name: 'Fiesta', url: 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=150&auto=format&fit=crop&q=80' },
+                        { name: 'Asado', url: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=150&auto=format&fit=crop&q=80' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => setEditProjectAvatarUrl(preset.url)}
+                          className="px-2 py-1 text-[9px] bg-white hover:bg-slate-50 rounded-md font-semibold transition text-slate-600 border border-slate-200 cursor-pointer shrink-0"
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Banner / Propaganda */}
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                    Banner de Campaña o Evento (URL)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: https://images.unsplash.com/..."
+                    value={editProjectBannerUrl}
+                    onChange={(e) => setEditProjectBannerUrl(e.target.value)}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white"
+                  />
+                  <div className="flex gap-1.5 items-center">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">Presets rápidos:</span>
+                    <div className="flex gap-1.5 overflow-x-auto py-1">
+                      {[
+                        { name: 'Obras', url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&q=80&w=1200&h=400' },
+                        { name: 'Fiesta', url: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?auto=format&fit=crop&q=80&w=1200&h=400' },
+                        { name: 'Show', url: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&q=80&w=1200&h=400' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => setEditProjectBannerUrl(preset.url)}
+                          className="px-2 py-1 text-[9px] bg-white hover:bg-slate-50 rounded-md font-semibold transition text-slate-600 border border-slate-200 cursor-pointer shrink-0"
+                        >
+                          {preset.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Interactive Supplies/Requirements Grid */}
+              <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/40 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                  <div>
+                    <h4 className="text-[10px] font-extrabold text-slate-600 uppercase tracking-wide">
+                      Grilla de Requerimientos e Insumos
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Defina los insumos o servicios que el proyecto necesita. Las columnas son editables en tiempo real.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditProjectComponentsGrid([
+                          ...editProjectComponentsGrid,
+                          { name: '', quantity: 1, price: 1000 }
+                        ]);
+                      }}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Agregar Ítem</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (editProjectComponentsGrid.length > 1) {
+                          setEditProjectComponentsGrid(editProjectComponentsGrid.slice(0, -1));
+                        } else {
+                          showAlert('error', 'Debe haber al menos un requerimiento.');
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-slate-150 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg transition cursor-pointer"
+                    >
+                      Remover Último
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-150 rounded-xl bg-white max-h-60 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-150 bg-slate-50 font-extrabold uppercase text-[9px] tracking-wider text-slate-400">
+                        <th className="py-2.5 px-3 w-3/5">DESCRIPCIÓN / INSUMO / SERVICIO</th>
+                        <th className="py-2.5 px-3 w-1/5 text-right">CANTIDAD</th>
+                        <th className="py-2.5 px-3 w-1/5 text-right">PRECIO UNITARIO ($)</th>
+                        <th className="py-2.5 px-3 text-right">TOTAL ($)</th>
+                        <th className="py-2.5 px-3 text-center">ELIMINAR</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {editProjectComponentsGrid.map((item, index) => (
+                        <tr key={index} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              required
+                              placeholder="Ej. Bolsones de Arena, Bolsa de Cemento"
+                              value={item.name}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                const updated = [...editProjectComponentsGrid];
+                                updated[index].name = val;
+                                setEditProjectComponentsGrid(updated);
+                              }}
+                              className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 font-medium"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const val = Math.max(1, parseInt(e.target.value) || 0);
+                                const updated = [...editProjectComponentsGrid];
+                                updated[index].quantity = val;
+                                setEditProjectComponentsGrid(updated);
+                              }}
+                              className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 font-mono text-right"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              value={item.price}
+                              onChange={(e) => {
+                                const val = Math.max(1, parseFloat(e.target.value) || 0);
+                                const updated = [...editProjectComponentsGrid];
+                                updated[index].price = val;
+                                setEditProjectComponentsGrid(updated);
+                              }}
+                              className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 font-mono text-right"
+                            />
+                          </td>
+                          <td className="p-2 text-right font-bold text-slate-700 font-mono pr-4 shrink-0 whitespace-nowrap">
+                            ${((item.quantity || 0) * (item.price || 0)).toLocaleString('es-AR')}
+                          </td>
+                          <td className="p-2 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editProjectComponentsGrid.length > 1) {
+                                  const updated = editProjectComponentsGrid.filter((_, i) => i !== index);
+                                  setEditProjectComponentsGrid(updated);
+                                } else {
+                                  showAlert('error', 'Debe ingresar al menos un insumo o requerimiento.');
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                              title="Eliminar fila"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {/* Summary row */}
+                  <div className="bg-slate-50 p-3 flex justify-between items-center border-t border-slate-150 font-extrabold text-slate-800">
+                    <span className="text-[10px] uppercase text-slate-500 font-extrabold">Monto Total Estimado Modificado:</span>
+                    <span className="text-sm font-black text-blue-700 font-mono">
+                      ${editProjectComponentsGrid.reduce((sum, item) => sum + ((item.quantity || 0) * (item.price || 0)), 0).toLocaleString('es-AR')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {editProjectError && (
+                <p className="text-xs text-red-600 font-bold bg-red-50 p-2.5 border border-red-100 rounded-xl">
+                  {editProjectError}
+                </p>
+              )}
+
+              {/* Actions Footer */}
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 bg-white sticky bottom-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  className="text-slate-500 hover:bg-slate-100 text-xs font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition cursor-pointer shadow-xs"
+                >
+                  Guardar Modificaciones
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );

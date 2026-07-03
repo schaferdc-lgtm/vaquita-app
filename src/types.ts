@@ -17,11 +17,13 @@ export interface Project {
   owner_id: string;
   created_at: string;
   avatar_url?: string;
+  banner_url?: string;
   payment_alias?: string;
   payment_cbu?: string;
   start_date: string; // YYYY-MM-DD
   end_date: string;   // YYYY-MM-DD
   is_deleted?: boolean; // soft delete
+  is_approved?: boolean; // admin approval for crowdfunding service fee
 }
 
 export interface ProjectComponent {

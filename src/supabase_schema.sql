@@ -1,5 +1,5 @@
 -- -------------------------------------------------------------
--- SUPABASE POSTGRESQL DATABASE SCHEMA
+-- SUPABASE POSTGRESQL DATABASE SCHEMA (UPDATED)
 -- Collaborative Crowdfunding Web/Mobile App (VaquitaApp)
 -- -------------------------------------------------------------
 
@@ -20,27 +20,19 @@ create table if not exists public.profiles (
 -- Enable RLS on profiles
 alter table public.profiles enable row level security;
 
--- Profiles Policies (Secured: Only visible to authenticated users, no open public scrape)
-create policy "Authenticated users can select profiles" 
-  on public.profiles for select using (
-    auth.role() = 'authenticated'
-  );
+-- Drop any existing policies to avoid conflicts
+drop policy if exists "Authenticated users can select profiles" on public.profiles;
+drop policy if exists "Users or Admin can update their own profile" on public.profiles;
+drop policy if exists "Admin can insert profiles" on public.profiles;
+drop policy if exists "Admin can delete profiles" on public.profiles;
+drop policy if exists "Only admin can access profiles" on public.profiles;
 
-create policy "Users or Admin can update their own profile" 
-  on public.profiles for update using (
-    auth.uid() = id or 
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
-
-create policy "Admin can insert profiles"
-  on public.profiles for insert with check (
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
-
-create policy "Admin can delete profiles"
-  on public.profiles for delete using (
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Strict policy: ONLY the admin user with email schaferdc@gmail.com has access to profiles
+create policy "Only admin can access profiles"
+  on public.profiles
+  for all
+  using (auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 
 -- ==========================================
@@ -52,34 +44,32 @@ create table if not exists public.projects (
   name text not null,
   description text,
   category text not null check (category in ('construction', 'party', 'event', 'other')),
+  avatar_url text,
+  payment_alias text,
+  payment_cbu text,
+  start_date text not null,
+  end_date text not null,
+  is_deleted boolean not null default false,
+  is_approved boolean not null default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
 -- Enable RLS on projects
 alter table public.projects enable row level security;
 
--- Projects Policies
-create policy "Projects are viewable by authenticated users"
-  on public.projects for select using (
-    auth.role() = 'authenticated'
-  );
+-- Drop any existing policies to avoid conflicts
+drop policy if exists "Projects are viewable by authenticated users" on public.projects;
+drop policy if exists "Owners or Admins can insert projects" on public.projects;
+drop policy if exists "Owners or Admins can update projects" on public.projects;
+drop policy if exists "Admins can delete projects" on public.projects;
+drop policy if exists "Only admin can access projects" on public.projects;
 
-create policy "Owners or Admins can insert projects"
-  on public.projects for insert with check (
-    auth.uid() = owner_id or 
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
-
-create policy "Owners or Admins can update projects"
-  on public.projects for update using (
-    auth.uid() = owner_id or 
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
-
-create policy "Admins can delete projects"
-  on public.projects for delete using (
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Strict policy: ONLY the admin user with email schaferdc@gmail.com has access to projects
+create policy "Only admin can access projects"
+  on public.projects
+  for all
+  using (auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 
 -- ==========================================
@@ -100,35 +90,19 @@ create table if not exists public.components (
 -- Enable RLS on components
 alter table public.components enable row level security;
 
--- Components Policies
-create policy "Components are viewable by authenticated users"
-  on public.components for select using (
-    auth.role() = 'authenticated'
-  );
+-- Drop any existing policies to avoid conflicts
+drop policy if exists "Components are viewable by authenticated users" on public.components;
+drop policy if exists "Project owners or Admins can insert components" on public.components;
+drop policy if exists "Project owners or Admins can update components" on public.components;
+drop policy if exists "Project owners or Admins can delete components" on public.components;
+drop policy if exists "Only admin can access components" on public.components;
 
-create policy "Project owners or Admins can insert components"
-  on public.components for insert with check (
-    exists (
-      select 1 from public.projects p 
-      where p.id = project_id and (p.owner_id = auth.uid() or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
-    )
-  );
-
-create policy "Project owners or Admins can update components"
-  on public.components for update using (
-    exists (
-      select 1 from public.projects p 
-      where p.id = project_id and (p.owner_id = auth.uid() or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
-    )
-  );
-
-create policy "Project owners or Admins can delete components"
-  on public.components for delete using (
-    exists (
-      select 1 from public.projects p 
-      where p.id = project_id and (p.owner_id = auth.uid() or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
-    )
-  );
+-- Strict policy: ONLY the admin user with email schaferdc@gmail.com has access to components
+create policy "Only admin can access components"
+  on public.components
+  for all
+  using (auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 
 -- ==========================================
@@ -155,32 +129,19 @@ create table if not exists public.contributions (
 -- Enable RLS on contributions
 alter table public.contributions enable row level security;
 
--- Contributions Policies (Extremely Secured: Only backers, project owners, or Admins can view or edit)
-create policy "Users can select their own contributions, or project owners, or admin"
-  on public.contributions for select using (
-    backer_id = auth.uid() or
-    exists (
-      select 1 from public.projects p 
-      where p.id = project_id and p.owner_id = auth.uid()
-    ) or
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Drop any existing policies to avoid conflicts
+drop policy if exists "Users can select their own contributions, or project owners, or admin" on public.contributions;
+drop policy if exists "Authenticated users can create contributions" on public.contributions;
+drop policy if exists "Backers can update payment tickets, or admin can validate" on public.contributions;
+drop policy if exists "Only Admins can delete contributions" on public.contributions;
+drop policy if exists "Only admin can access contributions" on public.contributions;
 
-create policy "Authenticated users can create contributions"
-  on public.contributions for insert with check (
-    auth.role() = 'authenticated'
-  );
-
-create policy "Backers can update payment tickets, or admin can validate"
-  on public.contributions for update using (
-    backer_id = auth.uid() or
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
-
-create policy "Only Admins can delete contributions"
-  on public.contributions for delete using (
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Strict policy: ONLY the admin user with email schaferdc@gmail.com has access to contributions
+create policy "Only admin can access contributions"
+  on public.contributions
+  for all
+  using (auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 
 -- ==========================================
@@ -197,22 +158,18 @@ create table if not exists public.user_actions (
 -- Enable RLS on user_actions
 alter table public.user_actions enable row level security;
 
--- Policies for user_actions
-create policy "Admins can view all actions, users can view their own"
-  on public.user_actions for select using (
-    user_email = auth.jwt() ->> 'email' or
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Drop any existing policies to avoid conflicts
+drop policy if exists "Admins can view all actions, users can view their own" on public.user_actions;
+drop policy if exists "Authenticated users can insert actions" on public.user_actions;
+drop policy if exists "Only Admins can delete actions" on public.user_actions;
+drop policy if exists "Only admin can access user_actions" on public.user_actions;
 
-create policy "Authenticated users can insert actions"
-  on public.user_actions for insert with check (
-    auth.role() = 'authenticated'
-  );
-
-create policy "Only Admins can delete actions"
-  on public.user_actions for delete using (
-    auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+-- Strict policy: ONLY the admin user with email schaferdc@gmail.com has access to user_actions
+create policy "Only admin can access user_actions"
+  on public.user_actions
+  for all
+  using (auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 
 -- ==========================================
@@ -239,6 +196,7 @@ end;
 $$ language plpgsql security definer;
 
 -- Trigger to run on auth.users creation
+drop trigger if exists on_auth_user_created on auth.users;
 create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
@@ -254,6 +212,7 @@ begin
 end;
 $$ language plpgsql;
 
+drop trigger if exists on_profile_before_insert_or_update on public.profiles;
 create or replace trigger on_profile_before_insert_or_update
   before insert or update on public.profiles
   for each row execute procedure public.enforce_admin_schaferdc();
@@ -292,6 +251,7 @@ end;
 $$ language plpgsql security definer;
 
 -- Trigger to run after insert on user_actions
+drop trigger if exists on_user_action_insert on public.user_actions;
 create or replace trigger on_user_action_insert
   after insert on public.user_actions
   for each row execute procedure public.prune_user_actions();
