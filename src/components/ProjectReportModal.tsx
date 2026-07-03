@@ -136,7 +136,7 @@ export default function ProjectReportModal({
 
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center z-55 p-4 overflow-y-auto print:bg-white print:p-0 print:absolute print:inset-0">
-      <div className="bg-white rounded-3xl w-full max-w-5xl my-4 flex flex-col shadow-2xl border border-slate-100 overflow-hidden print:shadow-none print:border-none print:my-0">
+      <div className="bg-white rounded-3xl w-full max-w-5xl max-h-[90vh] my-4 flex flex-col shadow-2xl border border-slate-100 overflow-hidden print:shadow-none print:border-none print:my-0">
         
         {/* Modal Header - Hidden on Print */}
         <div className="px-6 py-4 bg-slate-50 border-b border-slate-150 flex items-center justify-between shrink-0 print:hidden">
