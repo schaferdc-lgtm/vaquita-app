@@ -24,6 +24,11 @@ export interface Project {
   end_date: string;   // YYYY-MM-DD
   is_deleted?: boolean; // soft delete
   is_approved?: boolean; // admin approval for crowdfunding service fee
+  tk_payment_method?: 'transfer' | 'mercadopago';
+  tk_mp_preference_id?: string;
+  tk_mp_payment_id?: string;
+  tk_mp_payment_status?: string;
+  tk_payment_ticket?: string;
 }
 
 export interface ProjectComponent {
@@ -54,6 +59,10 @@ export interface Contribution {
   payment_ticket?: string;
   payment_bank?: string;
   validated_at?: string;
+  payment_method?: 'transfer' | 'mercadopago';
+  mp_preference_id?: string;
+  mp_payment_id?: string;
+  mp_payment_status?: string;
 }
 
 export interface SupabaseConfig {

@@ -79,12 +79,83 @@ export default function ProjectDetail({
   const [newItemQuantity, setNewItemQuantity] = useState('');
   const [formError, setFormError] = useState('');
 
+  // Mercado Pago states
+  const [activeMpPayment, setActiveMpPayment] = React.useState<{
+    type: 'contribution' | 'tk_fee';
+    amount: number;
+    componentId?: string;
+    componentName?: string;
+    quantityBought?: number;
+  } | null>(null);
+  const [mpProcessing, setMpProcessing] = React.useState(false);
+  const [mpSuccess, setMpSuccess] = React.useState(false);
+  const [selectedContributionMethod, setSelectedContributionMethod] = React.useState<Record<string, 'transfer' | 'mercadopago'>>({});
+
   // Date and status management states
   const [editedStartDate, setEditedStartDate] = useState(project.start_date);
   const [editedEndDate, setEditedEndDate] = useState(project.end_date);
   const [dateUpdateSuccess, setDateUpdateSuccess] = useState(false);
   const [dateUpdateError, setDateUpdateError] = useState('');
   const [showReportModal, setShowReportModal] = useState(false);
+
+  const handleMpPaymentComplete = () => {
+    if (!activeMpPayment || !activeUser) return;
+
+    if (activeMpPayment.type === 'tk_fee') {
+      // Approve project
+      onToggleProjectApproval?.(project.id, true);
+      alert(`¡Pago de TK Servicio por $${activeMpPayment.amount.toLocaleString('es-AR')} procesado con éxito mediante Mercado Pago! El proyecto/evento se encuentra ahora en estado VIGENTE y habilitado para recibir aportes de forma instantánea.`);
+    } else if (activeMpPayment.type === 'contribution' && activeMpPayment.componentId) {
+      const compId = activeMpPayment.componentId;
+      const component = components.find(c => c.id === compId);
+      if (!component) return;
+
+      const isPartial = component.allow_partial;
+      const amount = activeMpPayment.amount;
+      const qty = activeMpPayment.quantityBought || 0;
+
+      const res = fundComponent(
+        component,
+        isPartial,
+        qty,
+        amount,
+        activeUser.id,
+        activeUser.email,
+        activeUser.full_name
+      );
+
+      if (res.success && res.updatedComponent && res.contribution) {
+        const contributionResult = res.contribution;
+        // Mark as approved immediately since payment was made online!
+        contributionResult.status = 'approved';
+        contributionResult.payment_method = 'mercadopago';
+        contributionResult.payment_bank = 'MercadoPago';
+        contributionResult.payment_ticket = 'PREF-MP-' + Math.random().toString(36).substring(2, 9).toUpperCase();
+        contributionResult.validated_at = new Date().toISOString();
+
+        if (project.payment_alias) {
+          contributionResult.company_alias = project.payment_alias;
+        }
+
+        onAddContribution(contributionResult, res.updatedComponent);
+
+        // Clear input form
+        setFundingInputs((prev) => ({
+          ...prev,
+          [compId]: { quantity: '', amount: '', paymentTicket: '', paymentBank: '' },
+        }));
+
+        alert(`¡Aporte de $${amount.toLocaleString('es-AR')} para el insumo "${component.name}" acreditado e inscripto con éxito de forma automática! Puedes ver tu cupón de inscripción en la sección "Mis Aportes".`);
+      } else {
+        alert('Error al registrar el aporte: ' + res.error);
+      }
+    }
+
+    // Reset MP state
+    setActiveMpPayment(null);
+    setMpProcessing(false);
+    setMpSuccess(false);
+  };
 
   React.useEffect(() => {
     setEditedStartDate(project.start_date);
@@ -172,6 +243,46 @@ export default function ProjectDetail({
 
     const inputState = fundingInputs[component.id] || { quantity: '', amount: '', paymentTicket: '', paymentBank: '' };
     const allowPartial = component.allow_partial;
+
+    // Intercept Mercado Pago payment method
+    const method = selectedContributionMethod[component.id] || 'transfer';
+    if (method === 'mercadopago') {
+      let amount = 0;
+      let qty = 0;
+      if (allowPartial) {
+        amount = parseFloat(inputState.amount);
+        if (isNaN(amount) || amount <= 0) {
+          setFundingErrors((prev) => ({ ...prev, [component.id]: 'Ingrese un monto válido de dinero.' }));
+          return;
+        }
+        const remainingVal = component.remaining_quantity * component.unit_price;
+        if (amount > remainingVal) {
+          setFundingErrors((prev) => ({ ...prev, [component.id]: `El monto no puede superar el saldo restante de $${remainingVal.toLocaleString('es-AR')}.` }));
+          return;
+        }
+      } else {
+        qty = parseInt(inputState.quantity);
+        if (isNaN(qty) || qty <= 0) {
+          setFundingErrors((prev) => ({ ...prev, [component.id]: 'Ingrese una cantidad válida de unidades.' }));
+          return;
+        }
+        if (qty > Math.floor(component.remaining_quantity)) {
+          setFundingErrors((prev) => ({ ...prev, [component.id]: `La cantidad no puede superar el stock disponible de ${Math.floor(component.remaining_quantity)} unidades.` }));
+          return;
+        }
+        amount = qty * component.unit_price;
+      }
+
+      // Launch Mercado Pago Simulator
+      setActiveMpPayment({
+        type: 'contribution',
+        amount,
+        componentId: component.id,
+        componentName: component.name,
+        quantityBought: qty
+      });
+      return;
+    }
 
     let success = false;
     let errorMsg = '';
@@ -667,20 +778,61 @@ export default function ProjectDetail({
                             </div>
                           )}
 
-                          {/* Payment information instructions */}
-                          <div className="border border-amber-100 rounded-xl p-3 bg-amber-50/25 space-y-2 mt-2">
-                            <span className="block text-[10px] font-bold text-amber-800 uppercase tracking-wide flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
-                              Instrucciones de Pago
-                            </span>
-                            <p className="text-[10px] text-slate-600 leading-normal">
-                              Al presionar <strong>Aportar e Inscribirse</strong> registrarás tu intención de aporte para este insumo. 
-                              Luego, podrás ver los datos bancarios, realizar la transferencia y <strong>cargar el comprobante de pago</strong> desde la nueva pestaña <strong>"Mis Aportes"</strong> en la barra de navegación superior.
-                            </p>
-                            <div className="text-[9px] text-amber-700 bg-amber-500/10 rounded p-1.5 font-medium">
-                              ⚠️ Tendrás un plazo de <strong>24 horas</strong> para cargar el comprobante y que el administrador lo valide antes de que sea cancelado.
+                          {/* Selector de Medio de Pago */}
+                          <div className="space-y-1">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">Medio de Pago</label>
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedContributionMethod(prev => ({ ...prev, [component.id]: 'transfer' }))}
+                                className={`text-[10px] font-bold py-1.5 px-2 rounded-lg border transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
+                                  (selectedContributionMethod[component.id] || 'transfer') === 'transfer'
+                                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                🏦 Transf. Bancaria
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedContributionMethod(prev => ({ ...prev, [component.id]: 'mercadopago' }))}
+                                className={`text-[10px] font-bold py-1.5 px-2 rounded-lg border transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
+                                  selectedContributionMethod[component.id] === 'mercadopago'
+                                    ? 'bg-sky-50 border-sky-300 text-sky-700'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                              >
+                                💳 Mercado Pago
+                              </button>
                             </div>
                           </div>
+
+                          {/* Payment information instructions */}
+                          {(selectedContributionMethod[component.id] || 'transfer') === 'transfer' ? (
+                            <div className="border border-amber-100 rounded-xl p-3 bg-amber-50/25 space-y-2 mt-2">
+                              <span className="block text-[10px] font-bold text-amber-800 uppercase tracking-wide flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse"></span>
+                                Instrucciones de Pago (Manual)
+                              </span>
+                              <p className="text-[10px] text-slate-600 leading-normal">
+                                Al presionar <strong>Aportar e Inscribirse</strong> registrarás tu intención de aporte para este insumo. 
+                                Luego, podrás ver los datos bancarios, realizar la transferencia y <strong>cargar el comprobante de pago</strong> desde la pestaña <strong>"Mis Aportes"</strong>.
+                              </p>
+                              <div className="text-[9px] text-amber-700 bg-amber-500/10 rounded p-1.5 font-medium">
+                                ⚠️ Tendrás un plazo de <strong>24 horas</strong> para cargar el comprobante y que el administrador lo valide.
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="border border-sky-100 rounded-xl p-3 bg-sky-50/25 space-y-2 mt-2">
+                              <span className="block text-[10px] font-bold text-sky-800 uppercase tracking-wide flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-pulse"></span>
+                                Acreditación Online Instantánea
+                              </span>
+                              <p className="text-[10px] text-slate-600 leading-normal">
+                                Al presionar <strong>Pagar con Mercado Pago</strong>, se abrirá la pasarela segura para abonar con tarjeta, dinero en cuenta o transferencia. El aporte quedará <strong>aprobado de forma inmediata</strong>.
+                              </p>
+                            </div>
+                          )}
 
                           {error && (
                             <p className="text-[10px] font-semibold text-red-500 leading-tight bg-red-50 p-2 rounded-md border border-red-100 flex items-start gap-1">
@@ -691,10 +843,18 @@ export default function ProjectDetail({
 
                           <button
                             type="submit"
-                            className={`w-full ${palette.accentButtonBg} text-white font-bold text-xs py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer`}
+                            className={`w-full font-bold text-xs py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-sm hover:shadow-md cursor-pointer ${
+                              selectedContributionMethod[component.id] === 'mercadopago'
+                                ? 'bg-sky-500 hover:bg-sky-600 text-white'
+                                : `${palette.accentButtonBg} text-white`
+                            }`}
                           >
                             <Ticket className="w-4 h-4" />
-                            <span>Aportar e Inscribirse</span>
+                            <span>
+                              {selectedContributionMethod[component.id] === 'mercadopago'
+                                ? 'Pagar con Mercado Pago'
+                                : 'Aportar e Inscribirse'}
+                            </span>
                           </button>
                         </form>
                       )}
@@ -805,6 +965,26 @@ export default function ProjectDetail({
                   </>
                 )}
               </div>
+
+              {!project.is_approved && (activeUser?.id === project.owner_id || activeUser?.role === 'admin') && (
+                <div className="pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => {
+                      const fee = Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100)));
+                      setActiveMpPayment({
+                        type: 'tk_fee',
+                        amount: fee
+                      });
+                    }}
+                    className="w-full bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-[11px] py-2.5 px-3 rounded-xl transition cursor-pointer text-center shadow-xs flex items-center justify-center gap-1.5"
+                  >
+                    💳 Pagar TK Servicio con Mercado Pago
+                  </button>
+                  <p className="text-[9px] text-slate-400 mt-1 text-center">
+                    Simula la pasarela de Mercado Pago para habilitar la campaña instantáneamente.
+                  </p>
+                </div>
+              )}
 
               {/* Admin Direct Approval buttons inside Detail view */}
               {activeUser?.role === 'admin' && (
@@ -1099,6 +1279,152 @@ export default function ProjectDetail({
         components={components}
         contributions={contributions}
       />
+
+      {activeMpPayment && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform transition-all">
+            
+            {/* Header: Mercado Pago Branding */}
+            <div className="bg-[#009EE3] p-5 text-white relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-base tracking-tight">Mercado Pago</span>
+                  <span className="bg-white/20 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">Checkout Pro</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setActiveMpPayment(null);
+                    setMpProcessing(false);
+                    setMpSuccess(false);
+                  }}
+                  className="text-white hover:text-slate-100 bg-white/10 hover:bg-white/20 p-1.5 rounded-full transition cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              <div className="mt-4">
+                <span className="text-white/70 text-xs font-semibold uppercase tracking-wider block">Total a pagar:</span>
+                <span className="text-3xl font-black">${activeMpPayment.amount.toLocaleString('es-AR')}</span>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-5">
+              
+              {!mpProcessing && !mpSuccess ? (
+                <>
+                  <div className="space-y-3.5">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Concepto del Pago</span>
+                      <p className="text-xs font-bold text-slate-700 leading-normal">
+                        {activeMpPayment.type === 'tk_fee' 
+                          ? `TK Servicio - Activación y vigencia de la campaña del proyecto "${project.name}"`
+                          : `Aporte para el insumo "${activeMpPayment.componentName}"`
+                        }
+                      </p>
+                      {activeMpPayment.quantityBought && activeMpPayment.quantityBought > 0 ? (
+                        <p className="text-[11px] text-slate-500">
+                          Cantidad adquirida: <strong>{activeMpPayment.quantityBought} unidades</strong>
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Elige cómo pagar (Simulado)</span>
+                      
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100/60 rounded-xl border border-slate-150 transition cursor-pointer">
+                          <input type="radio" defaultChecked name="payment_mock" id="pm_card" className="accent-[#009EE3]" />
+                          <label htmlFor="pm_card" className="flex items-center justify-between w-full text-xs font-semibold text-slate-700 cursor-pointer">
+                            <span>💳 Tarjeta de Crédito o Débito</span>
+                            <span className="text-[10px] text-slate-400 font-mono">Visa, Master...</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100/60 rounded-xl border border-slate-150 transition cursor-pointer">
+                          <input type="radio" name="payment_mock" id="pm_wallet" className="accent-[#009EE3]" />
+                          <label htmlFor="pm_wallet" className="flex items-center justify-between w-full text-xs font-semibold text-slate-700 cursor-pointer">
+                            <span>📱 Dinero en cuenta Mercado Pago</span>
+                            <span className="text-[10px] text-emerald-600 font-extrabold uppercase text-right">Acreditación Al Instante</span>
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100/60 rounded-xl border border-slate-150 transition cursor-pointer">
+                          <input type="radio" name="payment_mock" id="pm_debin" className="accent-[#009EE3]" />
+                          <label htmlFor="pm_debin" className="flex items-center justify-between w-full text-xs font-semibold text-slate-700 cursor-pointer">
+                            <span>🏦 Transferencia (CVU / DEBIN)</span>
+                            <span className="text-[10px] text-slate-400 font-mono">Inmediata</span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex flex-col gap-2">
+                    <button
+                      onClick={() => {
+                        setMpProcessing(true);
+                        setTimeout(() => {
+                          setMpProcessing(false);
+                          setMpSuccess(true);
+                        }, 2000);
+                      }}
+                      className="w-full bg-[#009EE3] hover:bg-[#0089c7] text-white font-bold text-xs py-3 rounded-xl transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer border-0"
+                    >
+                      <Ticket className="w-4 h-4 text-white" />
+                      <span>Simular Pago Exitoso</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveMpPayment(null)}
+                      className="w-full text-slate-500 hover:bg-slate-100 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer border-0 bg-transparent"
+                    >
+                      Cancelar y Volver
+                    </button>
+                  </div>
+                </>
+              ) : mpProcessing ? (
+                <div className="py-12 flex flex-col items-center justify-center space-y-4">
+                  <div className="w-12 h-12 border-4 border-[#009EE3] border-t-transparent rounded-full animate-spin"></div>
+                  <div className="text-center">
+                    <p className="text-xs font-bold text-slate-700">Procesando pago de forma segura...</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Por favor no cierres la ventana</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="py-8 flex flex-col items-center justify-center space-y-5">
+                  <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center border border-emerald-200">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500" />
+                  </div>
+                  
+                  <div className="text-center space-y-1">
+                    <h4 className="text-sm font-extrabold text-slate-800">¡Pago Aprobado con Éxito!</h4>
+                    <p className="text-[11px] text-slate-500">La transacción de Mercado Pago ha sido conciliada.</p>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl w-full text-center">
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wide">ID de Pago Mercado Pago</span>
+                    <span className="text-xs font-mono font-bold text-slate-700">MP-TRANS-{(100000000 + Math.floor(Math.random() * 900000000))}</span>
+                  </div>
+
+                  <button
+                    onClick={handleMpPaymentComplete}
+                    className="w-full bg-[#009EE3] hover:bg-[#0089c7] text-white font-bold text-xs py-3 rounded-xl transition shadow-md hover:shadow-lg cursor-pointer border-0"
+                  >
+                    Volver a VaquitaApp
+                  </button>
+                </div>
+              )}
+
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 py-3.5 px-6 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[9px] text-slate-400 font-medium">Pago seguro encriptado SSL</span>
+              <span className="text-[9px] text-slate-400 font-semibold font-mono">Ref: VAQUITA-{project.id}</span>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );
