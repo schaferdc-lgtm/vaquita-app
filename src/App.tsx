@@ -36,6 +36,13 @@ export default function App() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [userActions, setUserActions] = useState<UserAction[]>([]);
   
+  // --- ADMIN PARAMETERS ---
+  const [adminFeeMin, setAdminFeeMin] = useState<number>(50000);
+  const [adminFeeMax, setAdminFeeMax] = useState<number>(1000000);
+  const [adminFeePercent, setAdminFeePercent] = useState<number>(1);
+  const [adminMinValidityDays, setAdminMinValidityDays] = useState<number>(30);
+  const [adminMaxValidityDays, setAdminMaxValidityDays] = useState<number>(365);
+  
   // --- AUTH STATE ---
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
 
@@ -230,6 +237,18 @@ export default function App() {
     if (localConfig) {
       setSupabaseConfig(JSON.parse(localConfig));
     }
+
+    // Hydrate Admin Parameters
+    const localFeeMin = localStorage.getItem('vaquita_admin_fee_min');
+    if (localFeeMin) setAdminFeeMin(Number(localFeeMin));
+    const localFeeMax = localStorage.getItem('vaquita_admin_fee_max');
+    if (localFeeMax) setAdminFeeMax(Number(localFeeMax));
+    const localFeePercent = localStorage.getItem('vaquita_admin_fee_percent');
+    if (localFeePercent !== null) setAdminFeePercent(Number(localFeePercent));
+    const localMinVal = localStorage.getItem('vaquita_admin_min_validity_days');
+    if (localMinVal) setAdminMinValidityDays(Number(localMinVal));
+    const localMaxVal = localStorage.getItem('vaquita_admin_max_validity_days');
+    if (localMaxVal) setAdminMaxValidityDays(Number(localMaxVal));
 
     // Hydrate User Actions
     const localUserActions = localStorage.getItem(LS_USER_ACTIONS);
@@ -700,6 +719,20 @@ export default function App() {
       return;
     }
 
+    const start_dt = new Date(newProjectStartDate);
+    const end_dt = new Date(newProjectEndDate);
+    const diff_time = end_dt.getTime() - start_dt.getTime();
+    const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
+
+    if (diff_days < adminMinValidityDays) {
+      setCreateProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
+      return;
+    }
+    if (diff_days > adminMaxValidityDays) {
+      setCreateProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser mayor al máximo establecido de ${adminMaxValidityDays} días.`);
+      return;
+    }
+
     // Build Project Object
     const newProject: Project = {
       id: sanitizedId,
@@ -799,6 +832,27 @@ export default function App() {
     }
     if (editProjectStartDate > editProjectEndDate) {
       setEditProjectError('La fecha de inicio no puede ser posterior a la fecha de fin.');
+      return;
+    }
+
+    // Guardrail: Approved/VIGENTE projects cannot change start date
+    if (editingProject.is_approved && editProjectStartDate !== editingProject.start_date) {
+      setEditProjectError('El proyecto ya se encuentra VIGENTE (Aprobado). No está permitido modificar la fecha de inicio de la campaña.');
+      return;
+    }
+
+    // Guardrail: Check campaign validity duration against administrative limits
+    const start_dt = new Date(editProjectStartDate);
+    const end_dt = new Date(editProjectEndDate);
+    const diff_time = end_dt.getTime() - start_dt.getTime();
+    const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
+
+    if (diff_days < adminMinValidityDays) {
+      setEditProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
+      return;
+    }
+    if (diff_days > adminMaxValidityDays) {
+      setEditProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser mayor al máximo establecido de ${adminMaxValidityDays} días.`);
       return;
     }
 
@@ -1104,6 +1158,11 @@ export default function App() {
     ? contributions.filter(c => c.backer_email.toLowerCase() === activeUser.email.toLowerCase() && (!c.status || c.status === 'pending') && !c.payment_ticket).length
     : 0;
 
+  // Calculate pending projects and validation tickets for Admin notification (red dot)
+  const pendingProjectsCount = projects.filter(p => !p.is_approved).length;
+  const pendingContributionsCount = contributions.filter(c => c.status === 'pending').length;
+  const totalAdminPendingCount = pendingProjectsCount + pendingContributionsCount;
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
       
@@ -1174,17 +1233,40 @@ export default function App() {
                 }`}
               >
                 Panel de Admin
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                </span>
+                {totalAdminPendingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                  </span>
+                )}
                 
                 {/* Tooltip explicativo del punto rojo */}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-56 sm:w-64 transition-all duration-250">
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-64 sm:w-72 transition-all duration-250">
                   <div className="w-2.5 h-2.5 bg-slate-800 rotate-45 -mb-1 shadow-sm"></div>
-                  <div className="bg-slate-800 text-white text-[10px] sm:text-xs font-normal p-2.5 rounded-xl shadow-xl border border-slate-700 text-center leading-normal">
-                    <span className="font-bold text-red-400 block mb-0.5">● Acciones Pendientes</span>
-                    El punto rojo indica que hay transferencias, aportes o proyectos pendientes de revisión y aprobación administrativa.
+                  <div className="bg-slate-800 text-white text-[10px] sm:text-xs font-normal p-3 rounded-xl shadow-xl border border-slate-700 text-center leading-normal">
+                    {totalAdminPendingCount > 0 ? (
+                      <>
+                        <span className="font-bold text-amber-400 block mb-1">● Tareas Pendientes ({totalAdminPendingCount})</span>
+                        Hay{' '}
+                        {pendingProjectsCount > 0 && (
+                          <span>
+                            <strong>{pendingProjectsCount}</strong> proyecto{pendingProjectsCount > 1 ? 's' : ''} pendiente{pendingProjectsCount > 1 ? 's' : ''} de habilitación
+                          </span>
+                        )}
+                        {pendingProjectsCount > 0 && pendingContributionsCount > 0 && ' y '}
+                        {pendingContributionsCount > 0 && (
+                          <span>
+                            <strong>{pendingContributionsCount}</strong> comprobante{pendingContributionsCount > 1 ? 's' : ''} por validar
+                          </span>
+                        )}
+                        . Navega aquí para resolverlas.
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-bold text-emerald-400 block mb-1">✔ Todo al Día</span>
+                        No hay proyectos pendientes de habilitación ni comprobantes de pago por validar en este momento.
+                      </>
+                    )}
                   </div>
                 </div>
               </button>
@@ -1257,6 +1339,11 @@ export default function App() {
             onRestoreProject={handleRestoreProject}
             onToggleProjectApproval={handleToggleProjectApproval}
             onEdit={handleOpenEditProject}
+            adminFeeMin={adminFeeMin}
+            adminFeeMax={adminFeeMax}
+            adminFeePercent={adminFeePercent}
+            adminMinValidityDays={adminMinValidityDays}
+            adminMaxValidityDays={adminMaxValidityDays}
           />
         ) : (
           <>
@@ -1499,6 +1586,7 @@ export default function App() {
                           </label>
                           <input
                             type="date"
+                            min={newProjectStartDate}
                             value={newProjectEndDate}
                             onChange={(e) => setNewProjectEndDate(e.target.value)}
                             className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
@@ -1929,6 +2017,54 @@ export default function App() {
             {activeTab === 'admin' && isAdmin && (
               <div className="space-y-8 animate-fade-in">
                 
+                {/* Cartel Elegante de Tareas Pendientes (Look & Feel de Alto Impacto) */}
+                {(() => {
+                  const pendingProjs = projects.filter(p => !p.is_approved);
+                  const pendingContribs = contributions.filter(c => c.status === 'pending');
+                  const totalPending = pendingProjs.length + pendingContribs.length;
+
+                  if (totalPending > 0) {
+                    return (
+                      <div className="bg-gradient-to-r from-rose-50 via-amber-50 to-orange-50 border-l-4 border-amber-500 p-5 rounded-2xl shadow-md border border-amber-200/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-pulse-slow">
+                        <div className="flex items-start gap-3.5">
+                          <div className="p-3 bg-amber-500/10 text-amber-700 rounded-xl border border-amber-200/50 shrink-0">
+                            <ShieldAlert className="w-6 h-6 text-amber-600 animate-bounce" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-slate-800 text-sm tracking-tight uppercase flex items-center gap-1.5">
+                              <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+                              Tareas Pendientes de Revisión
+                            </h4>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                              Tienes <strong className="text-amber-800 font-extrabold">{pendingProjs.length}</strong> {pendingProjs.length === 1 ? 'proyecto pendiente' : 'proyectos pendientes'} de habilitación y{' '}
+                              <strong className="text-amber-800 font-extrabold">{pendingContribs.length}</strong> {pendingContribs.length === 1 ? 'comprobante' : 'comprobantes'} por validar. Navega a continuación para resolverlas.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="bg-amber-600 text-white px-3.5 py-1.5 rounded-full text-xs font-black shadow-xs flex items-center gap-1.5">
+                            {totalPending} pendientes
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-l-4 border-emerald-500 p-5 rounded-2xl shadow-sm border border-emerald-200/60 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                          <div className="p-2.5 bg-emerald-500/10 text-emerald-700 rounded-xl border border-emerald-200/50 shrink-0">
+                            <Check className="w-6 h-6 text-emerald-600 font-black" />
+                          </div>
+                          <div>
+                            <h4 className="font-extrabold text-slate-800 text-sm tracking-tight">Consola al Día</h4>
+                            <p className="text-xs text-emerald-800/80 font-semibold mt-0.5">Todo al día ✔ No tienes proyectos ni comprobantes pendientes de validación.</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                })()}
+
                 {/* Admin Header Stats */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                   <div>
@@ -1949,8 +2085,109 @@ export default function App() {
                       Habilitación de Proyectos y Validación de Pago de Servicio (Vigencia Final)
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-1 leading-normal">
-                      Cada proyecto requiere el pago del servicio de CROWDFOUNDING por un valor del <strong>1% del total</strong> del presupuesto (con un tope mínimo de <strong>$50.000</strong> y un máximo de <strong>$1.000.000</strong>) transferido al alias <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded select-all font-bold">danielschafer.mp</strong>. Valide la transferencia aquí para dar el OK final y poner en vigencia el evento/proyecto.
+                      Cada proyecto requiere el pago del servicio de CROWDFOUNDING por un valor del <strong>{adminFeePercent}% del total</strong> del presupuesto (con un tope mínimo de <strong>${adminFeeMin.toLocaleString('es-AR')}</strong> y un máximo de <strong>${adminFeeMax.toLocaleString('es-AR')}</strong>) transferido al alias <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded select-all font-bold">danielschafer.mp</strong>. Valide la transferencia aquí para dar el OK final y poner en vigencia el evento/proyecto.
                     </p>
+
+                    {/* Panel de Configuración de Parámetros de Administración */}
+                    <div className="bg-slate-50/90 border border-slate-200/80 rounded-2xl p-4 mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                      <div className="col-span-full border-b border-slate-200/60 pb-2 flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
+                          <Settings className="w-3.5 h-3.5 text-blue-600 animate-spin-slow" /> Configuración de Parámetros de Administración
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-mono">Persistencia Local</span>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Comisión (%)</label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            value={adminFeePercent}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setAdminFeePercent(isNaN(val) ? 0 : val);
+                            }}
+                            className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">%</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Mínimo ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={adminFeeMin}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAdminFeeMin(isNaN(val) ? 0 : val);
+                          }}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Máximo ($)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={adminFeeMax}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAdminFeeMax(isNaN(val) ? 0 : val);
+                          }}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Vigencia Mín (Días)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={adminMinValidityDays}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAdminMinValidityDays(isNaN(val) ? 1 : val);
+                          }}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Vigencia Máx (Días)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={adminMaxValidityDays}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAdminMaxValidityDays(isNaN(val) ? 1 : val);
+                          }}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                        />
+                      </div>
+
+                      <div className="col-span-full flex justify-end gap-2.5 border-t border-slate-200/55 pt-2">
+                        <button
+                          onClick={() => {
+                            localStorage.setItem('vaquita_admin_fee_min', adminFeeMin.toString());
+                            localStorage.setItem('vaquita_admin_fee_max', adminFeeMax.toString());
+                            localStorage.setItem('vaquita_admin_fee_percent', adminFeePercent.toString());
+                            localStorage.setItem('vaquita_admin_min_validity_days', adminMinValidityDays.toString());
+                            localStorage.setItem('vaquita_admin_max_validity_days', adminMaxValidityDays.toString());
+                            showAlert('success', '¡Parámetros de administración guardados y aplicados exitosamente!');
+                            logUserAction(activeUser?.email || 'admin', 'CONFIG_PARAMETROS', `Actualizó parámetros: Comisión ${adminFeePercent}%, Mín $${adminFeeMin}, Máx $${adminFeeMax}, Vigencia Mín ${adminMinValidityDays}d, Máx ${adminMaxValidityDays}d`);
+                          }}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-[9px] uppercase tracking-wider rounded-xl transition-all shadow-xs hover:shadow-sm cursor-pointer flex items-center gap-1"
+                        >
+                          <Check className="w-3 h-3 text-white" /> Guardar Parámetros
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Search, Filter bar */}
@@ -2121,8 +2358,8 @@ export default function App() {
                           return sorted.map((p) => {
                             const pComps = components.filter((c) => c.project_id === p.id);
                             const totalCost = pComps.reduce((sum, c) => sum + c.total_price, 0);
-                            const tkServicioRaw = totalCost * 0.01;
-                            const tkServicio = Math.max(50000, Math.min(1000000, tkServicioRaw));
+                            const tkServicioRaw = totalCost * (adminFeePercent / 100);
+                            const tkServicio = Math.max(adminFeeMin, Math.min(adminFeeMax, tkServicioRaw));
                             
                             const owner = users.find(u => u.id === p.owner_id);
 
@@ -2156,7 +2393,7 @@ export default function App() {
                                     ${tkServicio.toLocaleString('es-AR')}
                                   </div>
                                   <div className="text-[8px] text-slate-400 font-medium">
-                                    (1% de {totalCost > 0 ? `$${totalCost.toLocaleString('es-AR')}` : '$0'})
+                                    ({adminFeePercent}% de {totalCost > 0 ? `$${totalCost.toLocaleString('es-AR')}` : '$0'})
                                   </div>
                                 </td>
                                 <td className="py-3 px-3">
@@ -2487,16 +2724,25 @@ export default function App() {
               {/* Date Fields */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
                     Fecha de Inicio de Campaña
+                    {editingProject.is_approved && (
+                      <span className="text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase font-black tracking-wider font-sans">Congelado (Vigente)</span>
+                    )}
                   </label>
                   <input
                     type="date"
                     required
+                    disabled={editingProject.is_approved === true}
                     value={editProjectStartDate}
                     onChange={(e) => setEditProjectStartDate(e.target.value)}
-                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
+                    className={`w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono ${
+                      editingProject.is_approved ? 'bg-slate-55/90 opacity-70 cursor-not-allowed border-amber-250' : ''
+                    }`}
                   />
+                  {editingProject.is_approved && (
+                    <p className="text-[9px] text-slate-400 mt-1 leading-tight">La fecha de inicio no se puede modificar porque el proyecto ya está vigente.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
@@ -2505,6 +2751,7 @@ export default function App() {
                   <input
                     type="date"
                     required
+                    min={editProjectStartDate}
                     value={editProjectEndDate}
                     onChange={(e) => setEditProjectEndDate(e.target.value)}
                     className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"

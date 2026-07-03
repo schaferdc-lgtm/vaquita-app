@@ -25,6 +25,11 @@ interface ProjectDetailProps {
   onRestoreProject: (projectId: string) => void;
   onToggleProjectApproval?: (projectId: string, approve: boolean) => void;
   onEdit?: (project: Project) => void;
+  adminFeeMin?: number;
+  adminFeeMax?: number;
+  adminFeePercent?: number;
+  adminMinValidityDays?: number;
+  adminMaxValidityDays?: number;
 }
 
 export default function ProjectDetail({
@@ -43,6 +48,11 @@ export default function ProjectDetail({
   onRestoreProject,
   onToggleProjectApproval,
   onEdit,
+  adminFeeMin = 50000,
+  adminFeeMax = 1000000,
+  adminFeePercent = 1,
+  adminMinValidityDays = 30,
+  adminMaxValidityDays = 365,
 }: ProjectDetailProps) {
   // Get color palette for this project
   const palette = getProjectPalette(project.id);
@@ -99,6 +109,28 @@ export default function ProjectDetail({
       setDateUpdateError('La fecha fin no puede ser anterior a la de inicio.');
       return;
     }
+
+    // Guardrail: VIGENTE (approved) projects cannot modify start date
+    if (project.is_approved && editedStartDate !== project.start_date) {
+      setDateUpdateError('El proyecto ya se encuentra VIGENTE (Aprobado). No está permitido modificar la fecha de inicio de la campaña.');
+      return;
+    }
+
+    // Guardrail: Check duration range
+    const start_dt = new Date(editedStartDate);
+    const end_dt = new Date(editedEndDate);
+    const diff_time = end_dt.getTime() - start_dt.getTime();
+    const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
+
+    if (diff_days < adminMinValidityDays) {
+      setDateUpdateError(`La duración de la vigencia (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
+      return;
+    }
+    if (diff_days > adminMaxValidityDays) {
+      setDateUpdateError(`La duración de la vigencia (${diff_days} días) no puede superar el máximo establecido de ${adminMaxValidityDays} días.`);
+      return;
+    }
+
     onUpdateProjectDates(project.id, editedStartDate, editedEndDate);
     setDateUpdateSuccess(true);
   };
@@ -742,10 +774,16 @@ export default function ProjectDetail({
                 <span className="font-bold text-slate-800">${totalCost.toLocaleString('es-AR')}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
-                <span className="font-medium text-slate-500">TK Servicio (1%)</span>
+                <span className="font-medium text-slate-500">
+                  TK Servicio{activeUser?.role === 'admin' ? ` (${adminFeePercent}%)` : ''}
+                </span>
                 <div className="text-right">
-                  <span className="font-bold text-slate-800 block">${Math.max(50000, Math.min(1000000, totalCost * 0.01)).toLocaleString('es-AR')}</span>
-                  <span className="text-[8px] text-slate-400 block font-semibold">(Mín $50k / Máx $1M)</span>
+                  <span className="font-bold text-slate-800 block">${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</span>
+                  {activeUser?.role === 'admin' && (
+                    <span className="text-[8px] text-slate-400 block font-semibold">
+                      (Mín ${adminFeeMin >= 1000 ? `${(adminFeeMin / 1000)}k` : adminFeeMin} / Máx ${adminFeeMax >= 1000000 ? `${(adminFeeMax / 1000000)}M` : adminFeeMax >= 1000 ? `${(adminFeeMax / 1000)}k` : adminFeeMax})
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-[11px] text-slate-600 leading-normal space-y-2">
@@ -762,7 +800,7 @@ export default function ProjectDetail({
                       danielschafer.mp
                     </div>
                     <p className="text-[10px] text-slate-400">
-                      Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(50000, Math.min(1000000, totalCost * 0.01)).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
+                      Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
                     </p>
                   </>
                 )}
@@ -801,22 +839,32 @@ export default function ProjectDetail({
               
               <div className="space-y-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                    Fecha de Inicio (Editable por el Owner/Admin)
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center justify-between">
+                    <span>Fecha de Inicio</span>
+                    {project.is_approved && (
+                      <span className="text-[8px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-extrabold uppercase font-sans">Congelado (Vigente)</span>
+                    )}
                   </label>
                   <input
                     type="date"
+                    disabled={project.is_approved === true}
                     value={editedStartDate}
                     onChange={(e) => setEditedStartDate(e.target.value)}
-                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white"
+                    className={`w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white ${
+                      project.is_approved ? 'opacity-70 bg-slate-50 cursor-not-allowed border-amber-200' : ''
+                    }`}
                   />
+                  {project.is_approved && (
+                    <p className="text-[9px] text-slate-400 mt-1">La fecha de inicio no se puede modificar porque el proyecto está vigente.</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
-                    Fecha Fin (Editable por el Owner/Admin)
+                    Fecha Fin
                   </label>
                   <input
                     type="date"
+                    min={editedStartDate}
                     value={editedEndDate}
                     onChange={(e) => setEditedEndDate(e.target.value)}
                     className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white"
