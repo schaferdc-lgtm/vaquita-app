@@ -61,8 +61,17 @@ export default function ProjectDetail({
 
   // Get components for this project
   const projectComponents = components.filter((c) => c.project_id === project.id);
-  // Get contributions for this project
-  const projectContributions = contributions.filter((c) => c.project_id === project.id);
+  // Get contributions for this project (for Backer, only show their own contributions)
+  const projectContributions = contributions.filter((c) => {
+    if (c.project_id !== project.id) return false;
+    if (activeUser?.role === 'backer') {
+      return (
+        (c.backer_email && activeUser.email && c.backer_email.toLowerCase() === activeUser.email.toLowerCase()) ||
+        c.backer_id === activeUser.id
+      );
+    }
+    return true;
+  });
 
   // Financial aggregates
   const totalCost = projectComponents.reduce((sum, c) => sum + c.total_price, 0);
@@ -910,111 +919,115 @@ export default function ProjectDetail({
                 <span className="font-medium text-emerald-600">Total Aportado</span>
                 <span className="font-extrabold text-emerald-700">${totalFunded.toLocaleString('es-AR')}</span>
               </div>
-              <div className="flex justify-between text-slate-500">
-                <span className={`font-medium ${palette.footerText}`}>Pendiente de Financiar</span>
-                <span className={`font-extrabold ${palette.metaTotalText}`}>${totalRemaining.toLocaleString('es-AR')}</span>
-              </div>
+              {activeUser?.role !== 'backer' && (
+                <div className="flex justify-between text-slate-500">
+                  <span className={`font-medium ${palette.footerText}`}>Pendiente de Financiar</span>
+                  <span className={`font-extrabold ${palette.metaTotalText}`}>${totalRemaining.toLocaleString('es-AR')}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Crowdfunding Service & OK Final Panel */}
-          <div className={`rounded-2xl border p-6 space-y-4 shadow-sm ${project.is_approved ? 'bg-emerald-50/10 border-emerald-200' : 'bg-amber-50/10 border-amber-200'}`}>
-            <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-50 pb-2.5 flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <Coins className={`w-4 h-4 ${project.is_approved ? 'text-emerald-600' : 'text-amber-600'}`} />
-                Vigencia y Servicio de Crowdfounding
-              </span>
-              {project.is_approved ? (
-                <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">OK Vigente</span>
-              ) : (
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse shrink-0">Pendiente OK</span>
-              )}
-            </h3>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
-                <span className="font-medium text-slate-500">Costo Total del Proyecto</span>
-                <span className="font-bold text-slate-800">${totalCost.toLocaleString('es-AR')}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
-                <span className="font-medium text-slate-500">
-                  TK Servicio{activeUser?.role === 'admin' ? ` (${adminFeePercent}%)` : ''}
+          {activeUser?.role !== 'backer' && (
+            <div className={`rounded-2xl border p-6 space-y-4 shadow-sm ${project.is_approved ? 'bg-emerald-50/10 border-emerald-200' : 'bg-amber-50/10 border-amber-200'}`}>
+              <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-50 pb-2.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Coins className={`w-4 h-4 ${project.is_approved ? 'text-emerald-600' : 'text-amber-600'}`} />
+                  Vigencia y Servicio de Crowdfounding
                 </span>
-                <div className="text-right">
-                  <span className="font-bold text-slate-800 block">${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</span>
-                  {activeUser?.role === 'admin' && (
-                    <span className="text-[8px] text-slate-400 block font-semibold">
-                      (Mín ${adminFeeMin >= 1000 ? `${(adminFeeMin / 1000)}k` : adminFeeMin} / Máx ${adminFeeMax >= 1000000 ? `${(adminFeeMax / 1000000)}M` : adminFeeMax >= 1000 ? `${(adminFeeMax / 1000)}k` : adminFeeMax})
-                    </span>
+                {project.is_approved ? (
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">OK Vigente</span>
+                ) : (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 animate-pulse shrink-0">Pendiente OK</span>
+                )}
+              </h3>
+
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
+                  <span className="font-medium text-slate-500">Costo Total del Proyecto</span>
+                  <span className="font-bold text-slate-800">${totalCost.toLocaleString('es-AR')}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600 border-b border-slate-50 pb-1.5">
+                  <span className="font-medium text-slate-500">
+                    TK Servicio{activeUser?.role === 'admin' ? ` (${adminFeePercent}%)` : ''}
+                  </span>
+                  <div className="text-right">
+                    <span className="font-bold text-slate-800 block">${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</span>
+                    {activeUser?.role === 'admin' && (
+                      <span className="text-[8px] text-slate-400 block font-semibold">
+                        (Mín ${adminFeeMin >= 1000 ? `${(adminFeeMin / 1000)}k` : adminFeeMin} / Máx ${adminFeeMax >= 1000000 ? `${(adminFeeMax / 1000000)}M` : adminFeeMax >= 1000 ? `${(adminFeeMax / 1000)}k` : adminFeeMax})
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-[11px] text-slate-600 leading-normal space-y-2">
+                  {project.is_approved ? (
+                    <p className="text-emerald-700 font-medium">
+                      ✓ Este proyecto ha sido habilitado por la administración tras verificar el pago del servicio de crowdfunding.
+                    </p>
+                  ) : (
+                    <>
+                      <p>
+                        Para habilitar la vigencia y recibir aportes, se debe abonar el servicio realizando una transferencia al alias:
+                      </p>
+                      <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 font-mono text-center text-slate-800 select-all font-bold tracking-wide">
+                        danielschafer.mp
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                        Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
+                      </p>
+                    </>
                   )}
                 </div>
-              </div>
-              <div className="text-[11px] text-slate-600 leading-normal space-y-2">
-                {project.is_approved ? (
-                  <p className="text-emerald-700 font-medium">
-                    ✓ Este proyecto ha sido habilitado por la administración tras verificar el pago del servicio de crowdfunding.
-                  </p>
-                ) : (
-                  <>
-                    <p>
-                      Para habilitar la vigencia y recibir aportes, se debe abonar el servicio realizando una transferencia al alias:
+
+                {!project.is_approved && (activeUser?.id === project.owner_id || activeUser?.role === 'admin') && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <button
+                      onClick={() => {
+                        const fee = Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100)));
+                        setActiveMpPayment({
+                          type: 'tk_fee',
+                          amount: fee
+                        });
+                        onSendAdminEmail?.('payment_intent', {
+                          projectId: project.id,
+                          amount: fee
+                        });
+                      }}
+                      className="w-full bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-[11px] py-2.5 px-3 rounded-xl transition cursor-pointer text-center shadow-xs flex items-center justify-center gap-1.5"
+                    >
+                      Pagar TK Servicio con Mercado Pago
+                    </button>
+                    <p className="text-[9px] text-slate-400 mt-1 text-center">
+                      Simula la pasarela de Mercado Pago para habilitar la campaña instantáneamente.
                     </p>
-                    <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 font-mono text-center text-slate-800 select-all font-bold tracking-wide">
-                      danielschafer.mp
-                    </div>
-                    <p className="text-[10px] text-slate-400">
-                      Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
-                    </p>
-                  </>
+                  </div>
+                )}
+
+                {/* Admin Direct Approval buttons inside Detail view */}
+                {activeUser?.role === 'admin' && (
+                  <div className="pt-2 border-t border-slate-100 flex gap-2">
+                    {!project.is_approved ? (
+                      <button
+                        onClick={() => onToggleProjectApproval?.(project.id, true)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center shadow-xs"
+                      >
+                        Dar OK Final (Aprobar)
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => onToggleProjectApproval?.(project.id, false)}
+                        className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-150 font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center"
+                      >
+                        Denegar / Revocar OK
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-
-              {!project.is_approved && (activeUser?.id === project.owner_id || activeUser?.role === 'admin') && (
-                <div className="pt-2 border-t border-slate-100">
-                  <button
-                    onClick={() => {
-                      const fee = Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100)));
-                      setActiveMpPayment({
-                        type: 'tk_fee',
-                        amount: fee
-                      });
-                      onSendAdminEmail?.('payment_intent', {
-                        projectId: project.id,
-                        amount: fee
-                      });
-                    }}
-                    className="w-full bg-sky-500 hover:bg-sky-600 text-white font-extrabold text-[11px] py-2.5 px-3 rounded-xl transition cursor-pointer text-center shadow-xs flex items-center justify-center gap-1.5"
-                  >
-                    Pagar TK Servicio con Mercado Pago
-                  </button>
-                  <p className="text-[9px] text-slate-400 mt-1 text-center">
-                    Simula la pasarela de Mercado Pago para habilitar la campaña instantáneamente.
-                  </p>
-                </div>
-              )}
-
-              {/* Admin Direct Approval buttons inside Detail view */}
-              {activeUser?.role === 'admin' && (
-                <div className="pt-2 border-t border-slate-100 flex gap-2">
-                  {!project.is_approved ? (
-                    <button
-                      onClick={() => onToggleProjectApproval?.(project.id, true)}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center shadow-xs"
-                    >
-                      Dar OK Final (Aprobar)
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => onToggleProjectApproval?.(project.id, false)}
-                      className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-150 font-bold text-[11px] py-2 px-3 rounded-xl transition cursor-pointer text-center"
-                    >
-                      Denegar / Revocar OK
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
-          </div>
+          )}
 
           {/* Configuration & Validity Management (Owner or Admin) */}
           {isOwnerOrAdmin && (

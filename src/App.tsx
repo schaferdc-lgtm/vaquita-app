@@ -1355,17 +1355,19 @@ export default function App() {
                 </div>
               </button>
             )}
-            <button
-              onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
-              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 ${
-                activeTab === 'settings'
-                  ? 'bg-blue-50 text-blue-700 font-bold'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Conectar Supabase</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 ${
+                  activeTab === 'settings'
+                    ? 'bg-blue-50 text-blue-700 font-bold'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Conectar Supabase</span>
+              </button>
+            )}
           </nav>
 
           {/* Active User Google Auth UI */}
