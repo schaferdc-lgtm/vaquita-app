@@ -2172,7 +2172,7 @@ export default function App() {
                       Habilitación de Proyectos y Validación de Pago de Servicio (Vigencia Final)
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-1 leading-normal">
-                      Cada proyecto requiere el pago del servicio de CROWDFOUNDING por un valor del <strong>{adminFeePercent}% del total</strong> del presupuesto (con un tope mínimo de <strong>${adminFeeMin.toLocaleString('es-AR')}</strong> y un máximo de <strong>${adminFeeMax.toLocaleString('es-AR')}</strong>) transferido al alias <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded select-all font-bold">danielschafer.mp</strong>. Valide la transferencia aquí para dar el OK final y poner en vigencia el evento/proyecto.
+                      Cada proyecto requiere el pago del servicio de CROWDFOUNDING por un valor del <strong>{adminFeePercent}% del total</strong> del presupuesto (con un tope mínimo de <strong>${adminFeeMin.toLocaleString('es-AR')}</strong> y un máximo de <strong>${adminFeeMax.toLocaleString('es-AR')}</strong>) transferido al alias <strong className="font-mono text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded select-all font-bold">gestalu2026.dni</strong>. Valide la transferencia aquí para dar el OK final y poner en vigencia el evento/proyecto.
                     </p>
 
                     {/* Panel de Configuración de Parámetros de Administración */}

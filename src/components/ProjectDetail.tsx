@@ -972,7 +972,7 @@ export default function ProjectDetail({
                         Para habilitar la vigencia y recibir aportes, se debe abonar el servicio realizando una transferencia al alias:
                       </p>
                       <div className="bg-slate-100 p-2 rounded-lg border border-slate-200 font-mono text-center text-slate-800 select-all font-bold tracking-wide">
-                        danielschafer.mp
+                        gestalu2026.dni
                       </div>
                       <p className="text-[10px] text-slate-400">
                         Cuando el administrador (Daniel Schafer) reciba la transferencia de <strong>${Math.max(adminFeeMin, Math.min(adminFeeMax, totalCost * (adminFeePercent / 100))).toLocaleString('es-AR')}</strong>, otorgará el OK final de vigencia.
