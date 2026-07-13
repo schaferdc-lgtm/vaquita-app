@@ -48,6 +48,7 @@ export default function App() {
   
   // --- AUTH STATE ---
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
+  const [pendingRegistrationUser, setPendingRegistrationUser] = useState<{ id: string; email: string; full_name: string } | null>(null);
 
   // --- SUPABASE STATE ---
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>({
@@ -75,6 +76,21 @@ export default function App() {
   const [activeCoupon, setActiveCoupon] = useState<Contribution | null>(null);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
+
+  // --- LOGIN & REGISTRATION STATE ---
+  const [loginGmailInput, setLoginGmailInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [regFullName, setRegFullName] = useState('');
+  const [regRole, setRegRole] = useState<'owner' | 'backer'>('backer');
+  const [regError, setRegError] = useState('');
+
+  useEffect(() => {
+    if (pendingRegistrationUser) {
+      setRegFullName(pendingRegistrationUser.full_name || '');
+      setRegRole('backer');
+      setRegError('');
+    }
+  }, [pendingRegistrationUser]);
 
   // --- PROJECT CREATION FORM STATE ---
   const [showCreateProjectForm, setShowCreateProjectForm] = useState(false);
@@ -154,15 +170,11 @@ export default function App() {
         }
         setActiveUser(active);
       } catch (e) {
-        const adminUser = INITIAL_USERS.find(u => u.email === 'schaferdc@gmail.com') || INITIAL_USERS[0];
-        setActiveUser(adminUser);
-        localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(adminUser));
+        setActiveUser(null);
       }
     } else {
-      // DEFAULT: Log in Daniel Schafer (Admin) so the client immediately reviews the pristine admin dashboard and features
-      const adminUser = INITIAL_USERS.find(u => u.email === 'schaferdc@gmail.com') || INITIAL_USERS[0];
-      setActiveUser(adminUser);
-      localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(adminUser));
+      // No login default, force user login first
+      setActiveUser(null);
     }
 
     // Hydrate projects
@@ -317,7 +329,54 @@ export default function App() {
     }
   }, []);
 
-  // 2. Escuchar cambios de Auth en Supabase
+  // 2. Función unificada para procesar el inicio de sesión
+  const handleProcessLogin = (email: string, full_name: string, id: string) => {
+    if (!email) return;
+
+    const emailLower = email.toLowerCase();
+    
+    // Obtener la última lista de usuarios de localStorage para evitar closures desactualizados
+    const localUsers = localStorage.getItem(LS_USERS);
+    let currentUsers: UserProfile[] = [];
+    try {
+      currentUsers = localUsers ? JSON.parse(localUsers) : INITIAL_USERS;
+    } catch (e) {
+      currentUsers = INITIAL_USERS;
+    }
+
+    const existingUser = currentUsers.find(u => u.email.toLowerCase() === emailLower);
+
+    if (existingUser) {
+      setActiveUser(existingUser);
+      localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(existingUser));
+      setPendingRegistrationUser(null);
+      showAlert('success', `Sesión iniciada como ${existingUser.full_name} (${existingUser.role === 'admin' ? 'Administrador' : existingUser.role === 'owner' ? 'Creador' : 'Aportante'})`);
+      logUserAction(existingUser.email, 'INICIO_SESION_GMAIL', `Inició sesión con Gmail: ${existingUser.full_name}`);
+    } else {
+      if (emailLower === 'schaferdc@gmail.com') {
+        const adminProfile: UserProfile = {
+          id: id || 'admin-id',
+          email: emailLower,
+          full_name: 'Daniel Schafer',
+          role: 'admin',
+        };
+        setActiveUser(adminProfile);
+        localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(adminProfile));
+        setPendingRegistrationUser(null);
+        
+        const updated = [...currentUsers, adminProfile];
+        setUsers(updated);
+        localStorage.setItem(LS_USERS, JSON.stringify(updated));
+
+        showAlert('success', 'Sesión de Administrador iniciada de forma directa: Daniel Schafer');
+        logUserAction(adminProfile.email, 'INICIO_SESION_ADMIN', 'Inició sesión directamente como Administrador');
+      } else {
+        setPendingRegistrationUser({ id: id || `user-${Math.random().toString(36).substr(2, 9)}`, email: emailLower, full_name });
+      }
+    }
+  };
+
+  // 3. Escuchar cambios de Auth en Supabase
   useEffect(() => {
     if (!supabase) return;
 
@@ -325,25 +384,8 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session && session.user) {
         const user = session.user;
-        const profile: UserProfile = {
-          id: user.id,
-          email: user.email || '',
-          full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google',
-          role: user.email === 'schaferdc@gmail.com' ? 'admin' : 'backer',
-        };
-        setActiveUser(profile);
-        localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(profile));
-        
-        // Agregar usuario a la lista de usuarios si no existe
-        setUsers(prev => {
-          const isExist = prev.some(u => u.email.toLowerCase() === profile.email.toLowerCase());
-          if (!isExist) {
-            const updated = [...prev, profile];
-            localStorage.setItem(LS_USERS, JSON.stringify(updated));
-            return updated;
-          }
-          return prev;
-        });
+        const name = user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google';
+        handleProcessLogin(user.email || '', name, user.id);
       }
     });
 
@@ -352,28 +394,8 @@ export default function App() {
       async (event, session) => {
         if (session && session.user) {
           const user = session.user;
-          const profile: UserProfile = {
-            id: user.id,
-            email: user.email || '',
-            full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google',
-            role: user.email === 'schaferdc@gmail.com' ? 'admin' : 'backer',
-          };
-          setActiveUser(profile);
-          localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(profile));
-
-          // Agregar usuario a la lista de usuarios si no existe
-          setUsers(prev => {
-            const isExist = prev.some(u => u.email.toLowerCase() === profile.email.toLowerCase());
-            if (!isExist) {
-              const updated = [...prev, profile];
-              localStorage.setItem(LS_USERS, JSON.stringify(updated));
-              return updated;
-            }
-            return prev;
-          });
-
-          logUserAction(profile.email, 'INICIO_SESION_REAL_GOOGLE', `Inició sesión real con Google/Gmail como ${profile.full_name}`);
-          showAlert('success', `Sesión iniciada vía Google: ${profile.full_name}`);
+          const name = user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google';
+          handleProcessLogin(user.email || '', name, user.id);
         } else if (event === 'SIGNED_OUT') {
           setActiveUser(null);
           localStorage.removeItem(LS_ACTIVE_USER);
@@ -1335,6 +1357,293 @@ export default function App() {
   const pendingProjectsCount = projects.filter(p => !p.is_approved).length;
   const pendingContributionsCount = contributions.filter(c => c.status === 'pending').length;
   const totalAdminPendingCount = pendingProjectsCount + pendingContributionsCount;
+
+  // Si no hay sesión activa, mostramos la pantalla de login o de registro de perfil
+  if (!activeUser) {
+    if (pendingRegistrationUser) {
+      // Formulario Completar Registro de Perfil
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-800 p-4">
+          {alertMessage && (
+            <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-xl flex items-center gap-3 border transition-all animate-bounce ${
+              alertMessage.type === 'success' 
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}>
+              <Sparkles className={`w-5 h-5 ${alertMessage.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`} />
+              <span className="text-xs font-bold">{alertMessage.text}</span>
+            </div>
+          )}
+
+          <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 p-8 space-y-6">
+            {/* Header del Formulario */}
+            <div className="text-center space-y-2">
+              <div className="mx-auto w-12 h-12 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm">
+                <User className="w-6 h-6 animate-pulse" />
+              </div>
+              <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Completar Registro de Perfil</h2>
+              <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                ¡Hola! Vemos que es tu primera vez en VaquitaApp con el correo <strong className="font-semibold text-slate-700">{pendingRegistrationUser.email}</strong>.
+              </p>
+            </div>
+
+            {regError && (
+              <div className="bg-red-50 border border-red-100 text-red-700 p-3 rounded-xl flex items-start gap-2.5 text-xs">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{regError}</span>
+              </div>
+            )}
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!regFullName.trim()) {
+                setRegError('Por favor, ingresa tu nombre completo.');
+                return;
+              }
+              
+              // Crear el perfil del usuario
+              const newProfile: UserProfile = {
+                id: pendingRegistrationUser.id,
+                email: pendingRegistrationUser.email,
+                full_name: regFullName.trim(),
+                role: regRole,
+              };
+
+              // Guardar en la base de datos local
+              setUsers(prev => {
+                const updated = [...prev, newProfile];
+                localStorage.setItem(LS_USERS, JSON.stringify(updated));
+                return updated;
+              });
+
+              // Seteamos como usuario activo
+              setActiveUser(newProfile);
+              localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(newProfile));
+              setPendingRegistrationUser(null);
+
+              showAlert('success', '¡Perfil configurado con éxito! Bienvenido a VaquitaApp.');
+              logUserAction(newProfile.email, 'REGISTRO_PERFIL_NUEVO', `Se registró con rol ${newProfile.role} y nombre ${newProfile.full_name}`);
+            }} className="space-y-5">
+              
+              {/* Campo Nombre Completo */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  Nombre Completo
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Juan Pérez"
+                  value={regFullName}
+                  onChange={(e) => setRegFullName(e.target.value)}
+                  className="w-full text-xs px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium transition"
+                />
+              </div>
+
+              {/* Selección de Rol / Perfil */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  ¿Cuál es tu Rol en la Plataforma?
+                </label>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  {/* Creador de Proyectos (owner) */}
+                  <button
+                    type="button"
+                    onClick={() => setRegRole('owner')}
+                    className={`p-4 rounded-2xl border text-left transition flex items-start gap-3.5 cursor-pointer hover:bg-slate-50/50 ${
+                      regRole === 'owner'
+                        ? 'border-blue-500 bg-blue-50/30 ring-1 ring-blue-500'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-xl shrink-0 ${
+                      regRole === 'owner' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      <Hammer className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-extrabold text-slate-800 leading-none">Creador de Proyectos</p>
+                      <p className="text-[10px] text-slate-500 leading-normal mt-1">
+                        Quiero publicar proyectos comunitarios, detallar materiales o servicios y recibir aportes de mi comunidad.
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Aportante / Colaborador (backer) */}
+                  <button
+                    type="button"
+                    onClick={() => setRegRole('backer')}
+                    className={`p-4 rounded-2xl border text-left transition flex items-start gap-3.5 cursor-pointer hover:bg-slate-50/50 ${
+                      regRole === 'backer'
+                        ? 'border-blue-500 bg-blue-50/30 ring-1 ring-blue-500'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <div className={`p-2 rounded-xl shrink-0 ${
+                      regRole === 'backer' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-extrabold text-slate-800 leading-none">Aportante / Colaborador</p>
+                      <p className="text-[10px] text-slate-500 leading-normal mt-1">
+                        Quiero ver los proyectos comunitarios, apoyarlos comprando insumos enteros o aportando un porcentaje para lograrlos.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Botones de acción */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition duration-200 cursor-pointer text-center"
+                >
+                  Habilitar mi Cuenta y Comenzar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingRegistrationUser(null);
+                    handleLogout();
+                  }}
+                  className="w-full text-slate-400 hover:text-slate-600 text-xs font-bold py-2.5 rounded-xl transition cursor-pointer text-center"
+                >
+                  Volver / Cancelar
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    // Pantalla de Login Principal
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-800 p-4">
+        {alertMessage && (
+          <div className={`fixed bottom-4 right-4 z-50 p-4 rounded-xl shadow-xl flex items-center gap-3 border transition-all animate-bounce ${
+            alertMessage.type === 'success' 
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+              : 'bg-red-50 border-red-200 text-red-800'
+          }`}>
+            <Sparkles className={`w-5 h-5 ${alertMessage.type === 'success' ? 'text-emerald-600' : 'text-red-500'}`} />
+            <span className="text-xs font-bold">{alertMessage.text}</span>
+          </div>
+        )}
+
+        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 p-8 space-y-6 text-center">
+          
+          {/* Logo y Encabezado */}
+          <div className="space-y-3">
+            <div className="relative mx-auto w-16 h-16 rounded-3xl overflow-hidden shadow-md border-2 border-white ring-4 ring-blue-100">
+              <img 
+                src="https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?w=150&auto=format&fit=crop&q=80" 
+                alt="VaquitaApp Logo" 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight leading-none">VaquitaApp</h1>
+              <p className="text-[10px] text-blue-600 font-extrabold tracking-wider uppercase">Plataforma de Crowdfunding</p>
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
+              Colabora en proyectos comunitarios transparentes, financia insumos y haz realidad las ideas de tu comunidad de forma unificada.
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="bg-red-50 border border-red-100 text-red-700 p-3 rounded-xl flex items-start gap-2.5 text-xs text-left">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {/* Opción 1: Login Real con Google */}
+            <button
+              onClick={handleRealGoogleLogin}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition duration-200 flex items-center justify-center gap-2.5 cursor-pointer"
+            >
+              <svg className="w-4.5 h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
+                <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 018 12.5a5.99 5.99 0 015.991-6.014c1.558 0 2.902.593 3.935 1.557l3.07-3.07C19.141 3.115 16.733 2 13.99 2 8.473 2 4 6.473 4 12s4.473 10 9.99 10c5.77 0 9.814-4.057 9.814-9.99 0-.6-.054-1.18-.15-1.725H12.24z"/>
+              </svg>
+              <span>Iniciar Sesión Real con Google</span>
+            </button>
+
+            {/* Separador */}
+            <div className="flex items-center gap-2 text-slate-300">
+              <div className="h-px bg-slate-200 flex-1"></div>
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">o ingresa directamente</span>
+              <div className="h-px bg-slate-200 flex-1"></div>
+            </div>
+
+            {/* Opción 2: Formulario de Correo de Gmail (Simulador o directo) */}
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              setLoginError('');
+              
+              const emailTrimmed = loginGmailInput.trim().toLowerCase();
+              if (!emailTrimmed) {
+                setLoginError('Por favor, ingresa tu dirección de Gmail.');
+                return;
+              }
+              
+              // Validar que termine con @gmail.com
+              if (!emailTrimmed.endsWith('@gmail.com')) {
+                setLoginError('Por seguridad, el login requiere exclusivamente una dirección de correo de Gmail (@gmail.com).');
+                return;
+              }
+
+              // Procesar el inicio de sesión
+              let computedName = emailTrimmed.split('@')[0];
+              // Capitalizar primer letra del nombre simulado
+              computedName = computedName.charAt(0).toUpperCase() + computedName.slice(1);
+              
+              // Si es Daniel, darle su nombre real completo
+              if (emailTrimmed === 'schaferdc@gmail.com') {
+                computedName = 'Daniel Schafer';
+              }
+
+              handleProcessLogin(emailTrimmed, computedName, `sim-${Math.random().toString(36).substr(2, 9)}`);
+            }} className="space-y-3 text-left">
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider block">
+                  Tu dirección de Gmail
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="ejemplo@gmail.com"
+                  value={loginGmailInput}
+                  onChange={(e) => setLoginGmailInput(e.target.value)}
+                  className="w-full text-xs px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 focus:ring-1 focus:ring-blue-500 font-medium transition"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-3 px-4 rounded-xl shadow-xs transition duration-200 text-center cursor-pointer"
+              >
+                Ingresar con Gmail
+              </button>
+            </form>
+          </div>
+
+          {/* Footer del login */}
+          <p className="text-[10px] text-slate-400 leading-normal pt-2 border-t border-slate-100">
+            🔒 Autenticación protegida de extremo a extremo. Al acceder, confirmas que estás de acuerdo con nuestras pautas de uso transparente de fondos.
+          </p>
+
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800">
