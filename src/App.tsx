@@ -6,6 +6,7 @@ import {
 import { 
   INITIAL_USERS, INITIAL_PROJECTS, INITIAL_COMPONENTS 
 } from './data';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 import ProjectCard from './components/ProjectCard';
 import ProjectDetail from './components/ProjectDetail';
 import CouponModal from './components/CouponModal';
@@ -316,6 +317,94 @@ export default function App() {
     }
   }, []);
 
+  // 2. Escuchar cambios de Auth en Supabase
+  useEffect(() => {
+    if (!supabase) return;
+
+    // Verificar sesión actual al cargar
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session && session.user) {
+        const user = session.user;
+        const profile: UserProfile = {
+          id: user.id,
+          email: user.email || '',
+          full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google',
+          role: user.email === 'schaferdc@gmail.com' ? 'admin' : 'backer',
+        };
+        setActiveUser(profile);
+        localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(profile));
+        
+        // Agregar usuario a la lista de usuarios si no existe
+        setUsers(prev => {
+          const isExist = prev.some(u => u.email.toLowerCase() === profile.email.toLowerCase());
+          if (!isExist) {
+            const updated = [...prev, profile];
+            localStorage.setItem(LS_USERS, JSON.stringify(updated));
+            return updated;
+          }
+          return prev;
+        });
+      }
+    });
+
+    // Escuchar cambios de estado de autenticación (Login / Logout / Token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session && session.user) {
+          const user = session.user;
+          const profile: UserProfile = {
+            id: user.id,
+            email: user.email || '',
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || 'Usuario Google',
+            role: user.email === 'schaferdc@gmail.com' ? 'admin' : 'backer',
+          };
+          setActiveUser(profile);
+          localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(profile));
+
+          // Agregar usuario a la lista de usuarios si no existe
+          setUsers(prev => {
+            const isExist = prev.some(u => u.email.toLowerCase() === profile.email.toLowerCase());
+            if (!isExist) {
+              const updated = [...prev, profile];
+              localStorage.setItem(LS_USERS, JSON.stringify(updated));
+              return updated;
+            }
+            return prev;
+          });
+
+          logUserAction(profile.email, 'INICIO_SESION_REAL_GOOGLE', `Inició sesión real con Google/Gmail como ${profile.full_name}`);
+          showAlert('success', `Sesión iniciada vía Google: ${profile.full_name}`);
+        } else if (event === 'SIGNED_OUT') {
+          setActiveUser(null);
+          localStorage.removeItem(LS_ACTIVE_USER);
+        }
+      }
+    );
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabaseConfig.isConnected]);
+
+  // Función para iniciar sesión real con Google en Supabase
+  const handleRealGoogleLogin = async () => {
+    if (!supabase) {
+      showAlert('error', 'Supabase no está configurado o conectado. Por favor, configúrelo en la pestaña de Conectar Supabase.');
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+      if (error) throw error;
+    } catch (e: any) {
+      showAlert('error', `Error al iniciar sesión con Google: ${e.message || e}`);
+    }
+  };
+
   // Sync state modifications to local storage
   const syncToLocalStorage = (
     updatedProjects: Project[],
@@ -395,10 +484,19 @@ export default function App() {
     showAlert('success', `Sesión iniciada con Google como: ${newUser.full_name}`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     if (activeUser) {
       logUserAction(activeUser.email, 'CERRAR_SESION', `Cerró la sesión de usuario`);
     }
+    
+    if (supabase && supabaseConfig.isConnected) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.error('Error signing out from Supabase Auth:', e);
+      }
+    }
+
     setActiveUser(null);
     localStorage.removeItem(LS_ACTIVE_USER);
     showAlert('success', 'Sesión cerrada con éxito.');
@@ -1392,11 +1490,14 @@ export default function App() {
               </div>
             ) : (
               <button 
-                onClick={() => setActiveTab('settings')}
+                onClick={supabaseConfig.isConnected ? handleRealGoogleLogin : () => {
+                  setActiveTab('settings');
+                  showAlert('error', 'Supabase no está conectado aún. Configura tus credenciales en este panel para habilitar el Login Real con Google.');
+                }}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-full shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Acceder con Google</span>
+                <span>{supabaseConfig.isConnected ? 'Iniciar sesión (Google)' : 'Acceder (Demo)'}</span>
               </button>
             )}
           </div>

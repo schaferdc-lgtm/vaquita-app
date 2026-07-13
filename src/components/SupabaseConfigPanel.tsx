@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SupabaseConfig, UserProfile } from '../types';
 import { Database, Shield, Key, Eye, EyeOff, Check, Copy, Settings, HelpCircle, Terminal, LogIn } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface SupabaseConfigPanelProps {
   config: SupabaseConfig;
@@ -204,6 +205,41 @@ alter table public.contributions enable row level security;`;
               </div>
             </div>
           </div>
+
+          {/* Real Google Login if connected */}
+          {config.isConnected && (
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl shadow-xs border border-blue-100 space-y-4">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm tracking-wide uppercase">
+                <LogIn className="w-4 h-4 text-blue-600 animate-pulse" /> Autenticación Real con Google
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                ¡Tu base de datos está conectada! Ahora puedes iniciar sesión con tu cuenta real de Gmail de forma segura. El perfil se creará y se sincronizará automáticamente.
+              </p>
+              
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!supabase) return;
+                  try {
+                    await supabase.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: {
+                        redirectTo: window.location.origin
+                      }
+                    });
+                  } catch (e: any) {
+                    alert(`Error con Google Auth: ${e.message || e}`);
+                  }
+                }}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-3 px-4 rounded-xl shadow-xs hover:shadow-md transition duration-200 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <svg className="w-4.5 h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 018 12.5a5.99 5.99 0 015.991-6.014c1.558 0 2.902.593 3.935 1.557l3.07-3.07C19.141 3.115 16.733 2 13.99 2 8.473 2 4 6.473 4 12s4.473 10 9.99 10c5.77 0 9.814-4.057 9.814-9.99 0-.6-.054-1.18-.15-1.725H12.24z"/>
+                </svg>
+                <span>Iniciar Sesión Real con Gmail</span>
+              </button>
+            </div>
+          )}
 
           {/* Simulate New User Creation */}
           <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
