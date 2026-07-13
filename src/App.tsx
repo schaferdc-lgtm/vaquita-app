@@ -6,7 +6,7 @@ import {
 import { 
   INITIAL_USERS, INITIAL_PROJECTS, INITIAL_COMPONENTS 
 } from './data';
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { supabase, isSupabaseConfigured, updateSupabaseClient } from './lib/supabase';
 import ProjectCard from './components/ProjectCard';
 import ProjectDetail from './components/ProjectDetail';
 import CouponModal from './components/CouponModal';
@@ -581,10 +581,11 @@ export default function App() {
 
   // Supabase Configuration Handler
   const handleSaveSupabaseConfig = (url: string, key: string) => {
+    updateSupabaseClient(url, key);
     const newConfig: SupabaseConfig = {
-      url,
-      anonKey: key,
-      isConnected: url.length > 0 && key.length > 0,
+      url: url.trim(),
+      anonKey: key.trim(),
+      isConnected: url.trim().length > 0 && key.trim().length > 0,
     };
     setSupabaseConfig(newConfig);
     localStorage.setItem(LS_CONFIG, JSON.stringify(newConfig));
@@ -596,6 +597,7 @@ export default function App() {
   };
 
   const handleResetSupabaseConfig = () => {
+    updateSupabaseClient('', '');
     const defaultCfg = { url: '', anonKey: '', isConnected: false };
     setSupabaseConfig(defaultCfg);
     localStorage.removeItem(LS_CONFIG);
