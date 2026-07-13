@@ -389,6 +389,40 @@ export default function App() {
       }
     });
 
+    // Cargar perfiles de usuario registrados en Supabase para sincronizar
+    supabase
+      .from('profiles')
+      .select('*')
+      .then(({ data, error }) => {
+        if (!error && data) {
+          setUsers((prev) => {
+            const merged = [...prev];
+            data.forEach((dbProfile: any) => {
+              const idx = merged.findIndex(u => u.email.toLowerCase() === dbProfile.email.toLowerCase());
+              const mappedProfile: UserProfile = {
+                id: dbProfile.id,
+                email: dbProfile.email,
+                full_name: dbProfile.full_name || '',
+                role: dbProfile.role as 'admin' | 'owner' | 'backer',
+              };
+              if (idx !== -1) {
+                merged[idx] = {
+                  ...merged[idx],
+                  ...mappedProfile,
+                  full_name: mappedProfile.full_name || merged[idx].full_name,
+                };
+              } else {
+                merged.push(mappedProfile);
+              }
+            });
+            localStorage.setItem(LS_USERS, JSON.stringify(merged));
+            return merged;
+          });
+        } else if (error) {
+          console.error('Error fetching Supabase profiles:', error);
+        }
+      });
+
     // Escuchar cambios de estado de autenticación (Login / Logout / Token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -463,6 +497,22 @@ export default function App() {
       localStorage.setItem(LS_USER_ACTIONS, JSON.stringify(updated));
       return updated;
     });
+
+    // Write to Supabase database if configured
+    if (supabase) {
+      supabase
+        .from('user_actions')
+        .insert({
+          user_email: email,
+          action_type: actionType,
+          details: details
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error('Error recording action in Supabase user_actions table:', error);
+          }
+        });
+    }
   };
 
   const handleClearAllLogs = () => {
@@ -1423,6 +1473,25 @@ export default function App() {
 
               showAlert('success', '¡Perfil configurado con éxito! Bienvenido a VaquitaApp.');
               logUserAction(newProfile.email, 'REGISTRO_PERFIL_NUEVO', `Se registró con rol ${newProfile.role} y nombre ${newProfile.full_name}`);
+
+              // Sincronizar perfil con la base de datos de Supabase si está disponible y es un ID real
+              if (supabase) {
+                const isRealUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newProfile.id);
+                if (isRealUuid) {
+                  supabase
+                    .from('profiles')
+                    .update({
+                      full_name: newProfile.full_name,
+                      role: newProfile.role
+                    })
+                    .eq('id', newProfile.id)
+                    .then(({ error }) => {
+                      if (error) {
+                        console.error('Error updating profile in Supabase profiles table:', error);
+                      }
+                    });
+                }
+              }
             }} className="space-y-5">
               
               {/* Campo Nombre Completo */}
