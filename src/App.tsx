@@ -44,7 +44,6 @@ export default function App() {
   const [adminFeeMax, setAdminFeeMax] = useState<number>(1000000);
   const [adminFeePercent, setAdminFeePercent] = useState<number>(1);
   const [adminMinValidityDays, setAdminMinValidityDays] = useState<number>(30);
-  const [adminMaxValidityDays, setAdminMaxValidityDays] = useState<number>(365);
   
   // --- AUTH STATE ---
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
@@ -114,8 +113,14 @@ export default function App() {
   const [newProjectAlias, setNewProjectAlias] = useState('');
   const [newProjectCbu, setNewProjectCbu] = useState('');
   const [dragActive, setDragActive] = useState(false);
-  const [newProjectStartDate, setNewProjectStartDate] = useState('2026-06-01');
-  const [newProjectEndDate, setNewProjectEndDate] = useState('2026-12-31');
+  const [newProjectStartDate, setNewProjectStartDate] = useState(() => new Date().toLocaleDateString('en-CA'));
+  const [newProjectEndDate, setNewProjectEndDate] = useState(() => {
+    const monthsStr = localStorage.getItem('vaquita_admin_max_validity_months');
+    const months = monthsStr ? Number(monthsStr) : 12;
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d.toLocaleDateString('en-CA');
+  });
 
   // --- NEW V2 STATES ---
   const [adminMaxValidityMonths, setAdminMaxValidityMonths] = useState<number>(12);
@@ -281,8 +286,6 @@ export default function App() {
     if (localFeePercent !== null) setAdminFeePercent(Number(localFeePercent));
     const localMinVal = localStorage.getItem('vaquita_admin_min_validity_days');
     if (localMinVal) setAdminMinValidityDays(Number(localMinVal));
-    const localMaxVal = localStorage.getItem('vaquita_admin_max_validity_days');
-    if (localMaxVal) setAdminMaxValidityDays(Number(localMaxVal));
     const localMaxMonths = localStorage.getItem('vaquita_admin_max_validity_months');
     if (localMaxMonths) setAdminMaxValidityMonths(Number(localMaxMonths));
 
@@ -939,6 +942,11 @@ export default function App() {
       setCreateProjectError('La fecha de inicio no puede ser posterior a la fecha de fin.');
       return;
     }
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    if (newProjectStartDate < todayStr) {
+      setCreateProjectError('La fecha de inicio no puede ser menor a la fecha actual.');
+      return;
+    }
 
     const start_dt = new Date(newProjectStartDate);
     const end_dt = new Date(newProjectEndDate);
@@ -1015,8 +1023,13 @@ export default function App() {
       { name: 'Bolsa de Cal', quantity: 20, price: 40000 },
       { name: 'Ladrillos', quantity: 3500, price: 150 }
     ]);
-    setNewProjectStartDate('2026-06-01');
-    setNewProjectEndDate('2026-12-31');
+    const todayReset = new Date();
+    const todayStrReset = todayReset.toLocaleDateString('en-CA');
+    const endReset = new Date(todayReset);
+    endReset.setMonth(todayReset.getMonth() + adminMaxValidityMonths);
+    const endStrReset = endReset.toLocaleDateString('en-CA');
+    setNewProjectStartDate(todayStrReset);
+    setNewProjectEndDate(endStrReset);
     setShowCreateProjectForm(false);
     showAlert('success', `Proyecto "${newProject.name}" creado con ID: ${sanitizedId}`);
   };
@@ -1073,9 +1086,9 @@ export default function App() {
       return;
     }
 
-    // Guardrail: Approved/VIGENTE projects cannot change start date
-    if (editingProject.is_approved && editProjectStartDate !== editingProject.start_date) {
-      setEditProjectError('El proyecto ya se encuentra VIGENTE (Aprobado). No está permitido modificar la fecha de inicio de la campaña.');
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    if (editProjectStartDate !== editingProject.start_date && editProjectStartDate < todayStr) {
+      setEditProjectError('La fecha de inicio no puede ser menor a la fecha actual.');
       return;
     }
 
@@ -2005,7 +2018,6 @@ export default function App() {
             adminFeeMax={adminFeeMax}
             adminFeePercent={adminFeePercent}
             adminMinValidityDays={adminMinValidityDays}
-            adminMaxValidityDays={adminMaxValidityDays}
             adminMaxValidityMonths={adminMaxValidityMonths}
           />
         ) : (
@@ -2090,7 +2102,18 @@ export default function App() {
                   {/* Create project triggering (Only owner or admin can) */}
                   {activeUser && (activeUser.role === 'admin' || activeUser.role === 'owner') && (
                     <button
-                      onClick={() => setShowCreateProjectForm(!showCreateProjectForm)}
+                      onClick={() => {
+                        if (!showCreateProjectForm) {
+                          const today = new Date();
+                          const todayStr = today.toLocaleDateString('en-CA');
+                          const end = new Date(today);
+                          end.setMonth(today.getMonth() + adminMaxValidityMonths);
+                          const endStr = end.toLocaleDateString('en-CA');
+                          setNewProjectStartDate(todayStr);
+                          setNewProjectEndDate(endStr);
+                        }
+                        setShowCreateProjectForm(!showCreateProjectForm);
+                      }}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shrink-0 cursor-pointer shadow-xs"
                     >
                       <Plus className="w-4 h-4" />
@@ -2239,7 +2262,15 @@ export default function App() {
                           <input
                             type="date"
                             value={newProjectStartDate}
-                            onChange={(e) => setNewProjectStartDate(e.target.value)}
+                            onChange={(e) => {
+                              const newStart = e.target.value;
+                              setNewProjectStartDate(newStart);
+                              if (newStart) {
+                                const d = new Date(newStart + 'T00:00:00');
+                                d.setMonth(d.getMonth() + adminMaxValidityMonths);
+                                setNewProjectEndDate(d.toLocaleDateString('en-CA'));
+                              }
+                            }}
                             className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
                           />
                         </div>
@@ -2962,20 +2993,6 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Vigencia Máx (Días)</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={adminMaxValidityDays}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value);
-                            setAdminMaxValidityDays(isNaN(val) ? 1 : val);
-                          }}
-                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
-                        />
-                      </div>
-
-                      <div>
                         <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Vigencia Máx (Meses)</label>
                         <input
                           type="number"
@@ -2996,10 +3013,9 @@ export default function App() {
                             localStorage.setItem('vaquita_admin_fee_max', adminFeeMax.toString());
                             localStorage.setItem('vaquita_admin_fee_percent', adminFeePercent.toString());
                             localStorage.setItem('vaquita_admin_min_validity_days', adminMinValidityDays.toString());
-                            localStorage.setItem('vaquita_admin_max_validity_days', adminMaxValidityDays.toString());
                             localStorage.setItem('vaquita_admin_max_validity_months', adminMaxValidityMonths.toString());
                             showAlert('success', '¡Parámetros de administración guardados y aplicados exitosamente!');
-                            logUserAction(activeUser?.email || 'admin', 'CONFIG_PARAMETROS', `Actualizó parámetros: Comisión ${adminFeePercent}%, Mín $${adminFeeMin}, Máx $${adminFeeMax}, Vigencia Mín ${adminMinValidityDays}d, Máx ${adminMaxValidityDays}d, Máx Meses ${adminMaxValidityMonths}m`);
+                            logUserAction(activeUser?.email || 'admin', 'CONFIG_PARAMETROS', `Actualizó parámetros: Comisión ${adminFeePercent}%, Mín $${adminFeeMin}, Máx $${adminFeeMax}, Vigencia Mín ${adminMinValidityDays}d, Máx Meses ${adminMaxValidityMonths}m`);
                           }}
                           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-[9px] uppercase tracking-wider rounded-xl transition-all shadow-xs hover:shadow-sm cursor-pointer flex items-center gap-1"
                         >

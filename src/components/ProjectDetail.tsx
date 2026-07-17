@@ -30,7 +30,6 @@ interface ProjectDetailProps {
   adminFeeMax?: number;
   adminFeePercent?: number;
   adminMinValidityDays?: number;
-  adminMaxValidityDays?: number;
   adminMaxValidityMonths?: number;
 }
 
@@ -55,7 +54,6 @@ export default function ProjectDetail({
   adminFeeMax = 1000000,
   adminFeePercent = 1,
   adminMinValidityDays = 30,
-  adminMaxValidityDays = 365,
   adminMaxValidityMonths = 12,
 }: ProjectDetailProps) {
   // Get color palette for this project
@@ -195,9 +193,9 @@ export default function ProjectDetail({
       return;
     }
 
-    // Guardrail: VIGENTE (approved) projects cannot modify start date
-    if (project.is_approved && editedStartDate !== project.start_date) {
-      setDateUpdateError('El proyecto ya se encuentra VIGENTE (Aprobado). No está permitido modificar la fecha de inicio de la campaña.');
+    const todayStr = new Date().toLocaleDateString('en-CA');
+    if (editedStartDate !== project.start_date && editedStartDate < todayStr) {
+      setDateUpdateError('La fecha de inicio no puede ser menor a la fecha actual.');
       return;
     }
 
