@@ -80,6 +80,7 @@ export default function App() {
   // --- LOGIN & REGISTRATION STATE ---
   const [loginGmailInput, setLoginGmailInput] = useState('');
   const [loginError, setLoginError] = useState('');
+  const [showLoginHelp, setShowLoginHelp] = useState(false);
   const [regFullName, setRegFullName] = useState('');
   const [regRole, setRegRole] = useState<'owner' | 'backer'>('backer');
   const [regError, setRegError] = useState('');
@@ -1648,16 +1649,26 @@ export default function App() {
                 <span>Iniciar Sesión Real con Google</span>
               </button>
               
-              <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 text-left leading-relaxed">
-                <span className="font-bold flex items-center gap-1 mb-0.5 text-amber-900">
-                  ⚠️ ¿Error "Unsupported provider"?
-                </span>
-                Si te aparece este error, significa que debes <strong>activar el proveedor Google</strong> en tu consola de Supabase (<strong>Authentication → Sign In / Providers → Google → ON</strong>) y configurar tus llaves de Google.
-                <p className="mt-1 font-semibold text-slate-700">
-                  💡 Solución alternativa inmediata:
-                </p>
-                Escribe tu dirección de Gmail en el recuadro de abajo e ingresa directamente en modo simulación (sin requerir configurar Google Auth).
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowLoginHelp(!showLoginHelp)}
+                className="w-full text-slate-500 hover:text-slate-800 text-[10px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer hover:underline py-1"
+              >
+                <span>{showLoginHelp ? '▲ Ocultar ayuda de configuración' : '❓ ¿Problemas con Google Sign-In? Ver solución'}</span>
+              </button>
+              
+              {showLoginHelp && (
+                <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 text-left leading-relaxed animate-fadeIn">
+                  <span className="font-bold flex items-center gap-1 mb-0.5 text-amber-900">
+                    ⚠️ ¿Error "Unsupported provider"?
+                  </span>
+                  Si te aparece este error, significa que debes <strong>activar el proveedor Google</strong> en tu consola de Supabase (<strong>Authentication → Sign In / Providers → Google → ON</strong>) y configurar tus llaves de Google.
+                  <p className="mt-1 font-semibold text-slate-700">
+                    💡 Solución alternativa inmediata:
+                  </p>
+                  Escribe tu dirección de Gmail en el recuadro de abajo e ingresa directamente en modo simulación (sin requerir configurar Google Auth).
+                </div>
+              )}
             </div>
 
             {/* Separador */}
