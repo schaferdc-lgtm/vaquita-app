@@ -31,6 +31,7 @@ interface ProjectDetailProps {
   adminFeePercent?: number;
   adminMinValidityDays?: number;
   adminMaxValidityDays?: number;
+  adminMaxValidityMonths?: number;
 }
 
 export default function ProjectDetail({
@@ -55,6 +56,7 @@ export default function ProjectDetail({
   adminFeePercent = 1,
   adminMinValidityDays = 30,
   adminMaxValidityDays = 365,
+  adminMaxValidityMonths = 12,
 }: ProjectDetailProps) {
   // Get color palette for this project
   const palette = getProjectPalette(project.id);
@@ -202,6 +204,15 @@ export default function ProjectDetail({
     // Guardrail: Check duration range
     const start_dt = new Date(editedStartDate);
     const end_dt = new Date(editedEndDate);
+    
+    // Calculate difference in months for V2 requirement
+    let diff_months = (end_dt.getFullYear() - start_dt.getFullYear()) * 12 + (end_dt.getMonth() - start_dt.getMonth());
+    // Account for partial month days
+    if (end_dt.getDate() < start_dt.getDate()) {
+      diff_months--;
+    }
+    const final_diff_months = diff_months <= 0 ? 1 : diff_months;
+
     const diff_time = end_dt.getTime() - start_dt.getTime();
     const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
 
@@ -209,8 +220,8 @@ export default function ProjectDetail({
       setDateUpdateError(`La duración de la vigencia (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
       return;
     }
-    if (diff_days > adminMaxValidityDays) {
-      setDateUpdateError(`La duración de la vigencia (${diff_days} días) no puede superar el máximo establecido de ${adminMaxValidityDays} días.`);
+    if (final_diff_months > adminMaxValidityMonths) {
+      setDateUpdateError(`La duración de la vigencia (${final_diff_months} meses) no puede superar el máximo establecido de ${adminMaxValidityMonths} meses.`);
       return;
     }
 
@@ -552,6 +563,77 @@ export default function ProjectDetail({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Attached Document & Photo Reel Display */}
+            {(project.document_url || (project.photo_reel && project.photo_reel.length > 0)) && (
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+                {/* Document Viewer Column */}
+                {project.document_url && (
+                  <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5 flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] font-extrabold text-blue-800 uppercase tracking-wide block mb-1">
+                        📄 Documento del Proyecto
+                      </span>
+                      <p className="text-[11px] text-slate-500 mb-3">
+                        Detalle, planos o justificación del proyecto/evento: <strong>{project.document_name || 'documento_adjunto.pdf'}</strong>
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      {project.document_url.startsWith('data:application/pdf') || project.document_url.endsWith('.pdf') ? (
+                        <a
+                          href={project.document_url}
+                          download={project.document_name || 'documento.pdf'}
+                          className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all cursor-pointer flex inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          Descargar PDF
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            const w = window.open();
+                            if (w) {
+                              w.document.write(`<img src="${project.document_url}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+                            }
+                          }}
+                          className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-lg transition-all cursor-pointer flex inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          Visualizar Archivo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Photo Reel Gallery Column */}
+                {project.photo_reel && project.photo_reel.length > 0 && (
+                  <div className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5">
+                    <span className="text-[10px] font-extrabold text-indigo-800 uppercase tracking-wide block mb-1">
+                      📸 Reel de Fotos ({project.photo_reel.length})
+                    </span>
+                    <p className="text-[11px] text-slate-500 mb-3">
+                      Imágenes referentes a la obra o evento (Presione para ampliar):
+                    </p>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {project.photo_reel.map((img, idx) => (
+                        <div
+                          key={idx}
+                          className="aspect-square rounded-lg overflow-hidden border border-slate-200 bg-white cursor-zoom-in hover:scale-105 transition-all"
+                          onClick={() => {
+                            const w = window.open();
+                            if (w) {
+                              w.document.write(`<img src="${img}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
+                            }
+                          }}
+                        >
+                          <img src={img} className="w-full h-full object-cover" alt={`Reel ${idx+1}`} referrerPolicy="no-referrer" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

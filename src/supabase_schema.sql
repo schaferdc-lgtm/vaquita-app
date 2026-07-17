@@ -530,3 +530,18 @@ begin
   );
 end;
 $$ language plpgsql security definer;
+
+
+-- ======================================================================================
+-- 4. ALTERACIONES DE ESQUEMA PARA ACTUALIZACIÓN DE NUEVAS FUNCIONALIDADES (VERSION 2)
+-- ======================================================================================
+-- Ejecutar estas sentencias en el SQL Editor de Supabase para actualizar una BBDD existente.
+
+alter table public.projects 
+  add column if not exists max_duration_months integer default 12,
+  add column if not exists document_url text,
+  add column if not exists document_name text,
+  add column if not exists photo_reel jsonb default '[]'::jsonb;
+
+alter table public.components
+  add column if not exists thank_you_threshold_percent numeric default 50 check (thank_you_threshold_percent >= 0 and thank_you_threshold_percent <= 100);

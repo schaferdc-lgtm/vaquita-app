@@ -102,11 +102,11 @@ export default function App() {
   const [newProjectComponentsInput, setNewProjectComponentsInput] = useState<string>(
     '100 Bolsones de Arena, Precio: 50000\n20 Bolsa de Cemento, Precio: 30000\n20 Bolsa de Cal, Precio: 40000\n3500 Ladrillos, Precio: 150'
   );
-  const [newProjectComponentsGrid, setNewProjectComponentsGrid] = useState<{ name: string; quantity: number; price: number }[]>([
-    { name: 'Bolsones de Arena', quantity: 100, price: 50000 },
-    { name: 'Bolsa de Cemento', quantity: 20, price: 30000 },
-    { name: 'Bolsa de Cal', quantity: 20, price: 40000 },
-    { name: 'Ladrillos', quantity: 3500, price: 150 }
+  const [newProjectComponentsGrid, setNewProjectComponentsGrid] = useState<{ name: string; quantity: number; price: number; thank_you_threshold_percent: number }[]>([
+    { name: 'Bolsones de Arena', quantity: 100, price: 50000, thank_you_threshold_percent: 50 },
+    { name: 'Bolsa de Cemento', quantity: 20, price: 30000, thank_you_threshold_percent: 50 },
+    { name: 'Bolsa de Cal', quantity: 20, price: 40000, thank_you_threshold_percent: 50 },
+    { name: 'Ladrillos', quantity: 3500, price: 150, thank_you_threshold_percent: 50 }
   ]);
   const [createProjectError, setCreateProjectError] = useState('');
   const [newProjectAvatarUrl, setNewProjectAvatarUrl] = useState('');
@@ -117,12 +117,26 @@ export default function App() {
   const [newProjectStartDate, setNewProjectStartDate] = useState('2026-06-01');
   const [newProjectEndDate, setNewProjectEndDate] = useState('2026-12-31');
 
+  // --- NEW V2 STATES ---
+  const [adminMaxValidityMonths, setAdminMaxValidityMonths] = useState<number>(12);
+  const [specialThankYou, setSpecialThankYou] = useState<{
+    backerName: string;
+    amount: number;
+    componentName: string;
+    projectName: string;
+    percent: number;
+  } | null>(null);
+
+  const [newProjectDocumentUrl, setNewProjectDocumentUrl] = useState('');
+  const [newProjectDocumentName, setNewProjectDocumentName] = useState('');
+  const [newProjectPhotoReel, setNewProjectPhotoReel] = useState<string[]>([]);
+
   // --- PROJECT EDITING FORM STATE ---
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
   const [editProjectDesc, setEditProjectDesc] = useState('');
   const [editProjectCategory, setEditProjectCategory] = useState<ProjectCategory>('construction');
-  const [editProjectComponentsGrid, setEditProjectComponentsGrid] = useState<{ id?: string; name: string; quantity: number; price: number }[]>([]);
+  const [editProjectComponentsGrid, setEditProjectComponentsGrid] = useState<{ id?: string; name: string; quantity: number; price: number; thank_you_threshold_percent: number }[]>([]);
   const [editProjectError, setEditProjectError] = useState('');
   const [editProjectAvatarUrl, setEditProjectAvatarUrl] = useState('');
   const [editProjectBannerUrl, setEditProjectBannerUrl] = useState('');
@@ -130,6 +144,9 @@ export default function App() {
   const [editProjectCbu, setEditProjectCbu] = useState('');
   const [editProjectStartDate, setEditProjectStartDate] = useState('2026-06-01');
   const [editProjectEndDate, setEditProjectEndDate] = useState('2026-12-31');
+  const [editProjectDocumentUrl, setEditProjectDocumentUrl] = useState('');
+  const [editProjectDocumentName, setEditProjectDocumentName] = useState('');
+  const [editProjectPhotoReel, setEditProjectPhotoReel] = useState<string[]>([]);
 
   // 1. Initial Load & LocalStorage Hydration
   useEffect(() => {
@@ -266,6 +283,8 @@ export default function App() {
     if (localMinVal) setAdminMinValidityDays(Number(localMinVal));
     const localMaxVal = localStorage.getItem('vaquita_admin_max_validity_days');
     if (localMaxVal) setAdminMaxValidityDays(Number(localMaxVal));
+    const localMaxMonths = localStorage.getItem('vaquita_admin_max_validity_months');
+    if (localMaxMonths) setAdminMaxValidityMonths(Number(localMaxMonths));
 
     // Hydrate User Actions
     const localUserActions = localStorage.getItem(LS_USER_ACTIONS);
@@ -627,7 +646,24 @@ export default function App() {
 
     // Open payment coupon
     setActiveCoupon(newContrib);
-    showAlert('success', `Aporte reservado. Por favor realiza la transferencia bancaria y carga tu comprobante desde la pestaña "Mis Aportes" para recibir la validación.`);
+    
+    // Check if the contribution amount represents a significant percentage of the total item cost
+    const thresholdPercent = updatedComp.thank_you_threshold_percent ?? 50; // Default to 50%
+    const totalItemCost = updatedComp.quantity * updatedComp.unit_price;
+    const contributionPercent = totalItemCost > 0 ? (newContrib.amount / totalItemCost) * 100 : 0;
+    
+    if (contributionPercent >= thresholdPercent) {
+      const proj = projects.find(p => p.id === newContrib.project_id);
+      setSpecialThankYou({
+        backerName: newContrib.backer_name,
+        amount: newContrib.amount,
+        componentName: updatedComp.name,
+        projectName: proj ? proj.name : newContrib.project_id,
+        percent: Math.round(contributionPercent),
+      });
+    } else {
+      showAlert('success', `Aporte reservado. Por favor realiza la transferencia bancaria y carga tu comprobante desde la pestaña "Mis Aportes" para recibir la validación.`);
+    }
   };
 
   const handleUploadPaymentTicket = (contribId: string, ticket: string, bank: string) => {
@@ -886,6 +922,7 @@ export default function App() {
         funded_amount: 0,
         allow_partial: allowPartial,
         total_price: qty * price,
+        thank_you_threshold_percent: item.thank_you_threshold_percent || 50
       });
     }
 
@@ -905,6 +942,15 @@ export default function App() {
 
     const start_dt = new Date(newProjectStartDate);
     const end_dt = new Date(newProjectEndDate);
+    
+    // Calculate difference in months for V2 requirement
+    let diff_months = (end_dt.getFullYear() - start_dt.getFullYear()) * 12 + (end_dt.getMonth() - start_dt.getMonth());
+    // Account for partial month days
+    if (end_dt.getDate() < start_dt.getDate()) {
+      diff_months--;
+    }
+    const final_diff_months = diff_months <= 0 ? 1 : diff_months;
+
     const diff_time = end_dt.getTime() - start_dt.getTime();
     const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
 
@@ -912,8 +958,8 @@ export default function App() {
       setCreateProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
       return;
     }
-    if (diff_days > adminMaxValidityDays) {
-      setCreateProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser mayor al máximo establecido de ${adminMaxValidityDays} días.`);
+    if (final_diff_months > adminMaxValidityMonths) {
+      setCreateProjectError(`La duración del proyecto (${final_diff_months} meses) no puede ser mayor al límite máximo de vigencia configurado por el administrador (${adminMaxValidityMonths} meses).`);
       return;
     }
 
@@ -933,6 +979,10 @@ export default function App() {
       end_date: newProjectEndDate,
       is_deleted: false,
       is_approved: false,
+      max_duration_months: adminMaxValidityMonths,
+      document_url: newProjectDocumentUrl || undefined,
+      document_name: newProjectDocumentName || undefined,
+      photo_reel: newProjectPhotoReel.length > 0 ? newProjectPhotoReel : undefined,
     };
 
     const updatedProjects = [...projects, newProject];
@@ -983,6 +1033,9 @@ export default function App() {
     setEditProjectCbu(project.payment_cbu || '');
     setEditProjectStartDate(project.start_date);
     setEditProjectEndDate(project.end_date);
+    setEditProjectDocumentUrl(project.document_url || '');
+    setEditProjectDocumentName(project.document_name || '');
+    setEditProjectPhotoReel(project.photo_reel || []);
     
     // Find components for this project
     const projectComps = components.filter((c) => c.project_id === project.id);
@@ -992,6 +1045,7 @@ export default function App() {
         name: c.name,
         quantity: c.quantity,
         price: c.unit_price,
+        thank_you_threshold_percent: c.thank_you_threshold_percent || 50,
       }))
     );
     setEditProjectError('');
@@ -1028,6 +1082,15 @@ export default function App() {
     // Guardrail: Check campaign validity duration against administrative limits
     const start_dt = new Date(editProjectStartDate);
     const end_dt = new Date(editProjectEndDate);
+    
+    // Calculate difference in months for V2 requirement
+    let diff_months = (end_dt.getFullYear() - start_dt.getFullYear()) * 12 + (end_dt.getMonth() - start_dt.getMonth());
+    // Account for partial month days
+    if (end_dt.getDate() < start_dt.getDate()) {
+      diff_months--;
+    }
+    const final_diff_months = diff_months <= 0 ? 1 : diff_months;
+
     const diff_time = end_dt.getTime() - start_dt.getTime();
     const diff_days = Math.ceil(diff_time / (1000 * 60 * 60 * 24));
 
@@ -1035,8 +1098,8 @@ export default function App() {
       setEditProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser menor al mínimo establecido de ${adminMinValidityDays} días.`);
       return;
     }
-    if (diff_days > adminMaxValidityDays) {
-      setEditProjectError(`La duración de la vigencia del proyecto (${diff_days} días) no puede ser mayor al máximo establecido de ${adminMaxValidityDays} días.`);
+    if (final_diff_months > adminMaxValidityMonths) {
+      setEditProjectError(`La duración del proyecto (${final_diff_months} meses) no puede ser mayor al límite máximo de vigencia configurado por el administrador (${adminMaxValidityMonths} meses).`);
       return;
     }
 
@@ -1047,6 +1110,7 @@ export default function App() {
       const name = item.name.trim();
       const qty = item.quantity;
       const price = item.price;
+      const threshold = item.thank_you_threshold_percent || 50;
 
       if (!name) {
         setEditProjectError(`Error en el ítem ${i + 1}: El nombre no puede estar vacío.`);
@@ -1074,6 +1138,7 @@ export default function App() {
             remaining_quantity: remaining,
             allow_partial: allowPartial,
             total_price: qty * price,
+            thank_you_threshold_percent: threshold,
           });
         } else {
           parsedComps.push({
@@ -1086,6 +1151,7 @@ export default function App() {
             funded_amount: 0,
             allow_partial: allowPartial,
             total_price: qty * price,
+            thank_you_threshold_percent: threshold,
           });
         }
       } else {
@@ -1099,6 +1165,7 @@ export default function App() {
           funded_amount: 0,
           allow_partial: allowPartial,
           total_price: qty * price,
+          thank_you_threshold_percent: threshold,
         });
       }
     }
@@ -1119,6 +1186,9 @@ export default function App() {
       payment_cbu: editProjectCbu.trim() || undefined,
       start_date: editProjectStartDate,
       end_date: editProjectEndDate,
+      document_url: editProjectDocumentUrl || undefined,
+      document_name: editProjectDocumentName || undefined,
+      photo_reel: editProjectPhotoReel.length > 0 ? editProjectPhotoReel : undefined,
     };
 
     const updatedProjects = projects.map(p => p.id === editingProject.id ? updatedProject : p);
@@ -1936,6 +2006,7 @@ export default function App() {
             adminFeePercent={adminFeePercent}
             adminMinValidityDays={adminMinValidityDays}
             adminMaxValidityDays={adminMaxValidityDays}
+            adminMaxValidityMonths={adminMaxValidityMonths}
           />
         ) : (
           <>
@@ -2302,6 +2373,129 @@ export default function App() {
                         </div>
                       </div>
 
+                      {/* Documento Adjunto del Proyecto (PDF o Imagen) */}
+                      <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                          Documento Adjunto (Opcional - PDF o Imagen)
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Cargue un archivo PDF o imagen descriptiva que detalle el propósito, planos o presupuestos del proyecto.
+                        </p>
+                        
+                        <div className="flex flex-col sm:flex-row items-center gap-3">
+                          <label className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer text-xs font-bold text-slate-700 flex items-center gap-1.5 shadow-2xs">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                            </svg>
+                            <span>Seleccionar Archivo</span>
+                            <input
+                              type="file"
+                              accept=".pdf,image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  if (file.size > 3 * 1024 * 1024) {
+                                    showAlert('error', 'El archivo no debe superar los 3 MB.');
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (evt) => {
+                                    setNewProjectDocumentUrl(evt.target?.result as string);
+                                    setNewProjectDocumentName(file.name);
+                                    showAlert('success', `Archivo "${file.name}" cargado con éxito.`);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                          {newProjectDocumentName ? (
+                            <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-semibold">
+                              <span className="truncate max-w-[200px]">{newProjectDocumentName}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewProjectDocumentUrl('');
+                                  setNewProjectDocumentName('');
+                                }}
+                                className="text-emerald-600 hover:text-emerald-900 font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 font-medium">Ningún archivo seleccionado</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Reel de Fotos del Proyecto (Máximo 8) */}
+                      <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                          Reel de Fotos del Proyecto (Hasta 8 imágenes)
+                        </label>
+                        <p className="text-[11px] text-slate-500">
+                          Agregue fotos que estén relacionadas con la obra, evento o terreno del proyecto.
+                        </p>
+                        
+                        <div className="space-y-3">
+                          <label className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer text-xs font-bold text-slate-700 flex inline-flex items-center gap-1.5 shadow-2xs">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 47.86 0 0 0-3.472 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                            </svg>
+                            <span>Agregar Foto ({newProjectPhotoReel.length}/8)</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              disabled={newProjectPhotoReel.length >= 8}
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []) as File[];
+                                if (newProjectPhotoReel.length + files.length > 8) {
+                                  showAlert('error', 'Solo puede cargar un máximo de 8 fotos en el reel.');
+                                  return;
+                                }
+                                
+                                files.forEach((file) => {
+                                  if (file.size > 800 * 1024) {
+                                    showAlert('error', `La foto "${file.name}" supera los 800KB. Utilice una imagen de menor peso.`);
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = (evt) => {
+                                    const resStr = evt.target?.result as string;
+                                    setNewProjectPhotoReel((prev) => [...prev, resStr]);
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+                              }}
+                            />
+                          </label>
+
+                          {newProjectPhotoReel.length > 0 && (
+                            <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                              {newProjectPhotoReel.map((img, i) => (
+                                <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-100 bg-slate-50">
+                                  <img src={img} className="w-full h-full object-cover" alt="Reel image" referrerPolicy="no-referrer" />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setNewProjectPhotoReel((prev) => prev.filter((_, idx) => idx !== i));
+                                    }}
+                                    className="absolute inset-0 bg-red-600/70 text-white font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer text-[10px]"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
                       {/* Avatar del Proyecto */}
                       <div className="border border-slate-100 rounded-2xl p-4 bg-slate-50/50 space-y-3">
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
@@ -2437,7 +2631,7 @@ export default function App() {
                               onClick={() => {
                                 setNewProjectComponentsGrid([
                                   ...newProjectComponentsGrid,
-                                  { name: '', quantity: 1, price: 1000 }
+                                  { name: '', quantity: 1, price: 1000, thank_you_threshold_percent: 50 }
                                 ]);
                               }}
                               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition cursor-pointer shadow-2xs flex items-center gap-1"
@@ -2471,8 +2665,9 @@ export default function App() {
                                 <tr className="bg-slate-50 border-b border-slate-150 text-slate-500 font-bold">
                                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                                   <th className="py-2.5 px-3 min-w-[200px]">Insumo / Servicio Requerido</th>
-                                  <th className="py-2.5 px-3 w-28">Cantidad</th>
-                                  <th className="py-2.5 px-3 w-36">Precio Unitario ($)</th>
+                                  <th className="py-2.5 px-3 w-20">Cantidad</th>
+                                  <th className="py-2.5 px-3 w-28">Precio Unitario ($)</th>
+                                  <th className="py-2.5 px-3 w-24 text-center">Umbral Agradec. (%)</th>
                                   <th className="py-2.5 px-3 w-32 text-right">Total Est.</th>
                                   <th className="py-2.5 px-3 w-16 text-center">Acción</th>
                                 </tr>
@@ -2524,6 +2719,23 @@ export default function App() {
                                           setNewProjectComponentsGrid(updated);
                                         }}
                                         className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-slate-50/30 font-semibold"
+                                      />
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max="100"
+                                        placeholder="50"
+                                        value={item.thank_you_threshold_percent || 50}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value);
+                                          const updated = [...newProjectComponentsGrid];
+                                          updated[idx].thank_you_threshold_percent = isNaN(val) ? 50 : val;
+                                          setNewProjectComponentsGrid(updated);
+                                        }}
+                                        className="w-full px-2 px-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 bg-slate-50/30 text-center font-semibold"
+                                        title="Porcentaje de aporte para mostrar cartel de agradecimiento especial"
                                       />
                                     </td>
                                     <td className="py-2 px-3 text-right font-bold text-slate-700 font-mono">
@@ -2763,6 +2975,20 @@ export default function App() {
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Vigencia Máx (Meses)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={adminMaxValidityMonths}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value);
+                            setAdminMaxValidityMonths(isNaN(val) ? 1 : val);
+                          }}
+                          className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-hidden focus:border-blue-500 font-mono font-bold"
+                        />
+                      </div>
+
                       <div className="col-span-full flex justify-end gap-2.5 border-t border-slate-200/55 pt-2">
                         <button
                           onClick={() => {
@@ -2771,8 +2997,9 @@ export default function App() {
                             localStorage.setItem('vaquita_admin_fee_percent', adminFeePercent.toString());
                             localStorage.setItem('vaquita_admin_min_validity_days', adminMinValidityDays.toString());
                             localStorage.setItem('vaquita_admin_max_validity_days', adminMaxValidityDays.toString());
+                            localStorage.setItem('vaquita_admin_max_validity_months', adminMaxValidityMonths.toString());
                             showAlert('success', '¡Parámetros de administración guardados y aplicados exitosamente!');
-                            logUserAction(activeUser?.email || 'admin', 'CONFIG_PARAMETROS', `Actualizó parámetros: Comisión ${adminFeePercent}%, Mín $${adminFeeMin}, Máx $${adminFeeMax}, Vigencia Mín ${adminMinValidityDays}d, Máx ${adminMaxValidityDays}d`);
+                            logUserAction(activeUser?.email || 'admin', 'CONFIG_PARAMETROS', `Actualizó parámetros: Comisión ${adminFeePercent}%, Mín $${adminFeeMin}, Máx $${adminFeeMax}, Vigencia Mín ${adminMinValidityDays}d, Máx ${adminMaxValidityDays}d, Máx Meses ${adminMaxValidityMonths}m`);
                           }}
                           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-[9px] uppercase tracking-wider rounded-xl transition-all shadow-xs hover:shadow-sm cursor-pointer flex items-center gap-1"
                         >
@@ -3391,6 +3618,57 @@ export default function App() {
         onClose={() => setActiveCoupon(null)}
       />
 
+      {/* Special Thank You Poster Modal */}
+      {specialThankYou && (
+        <div className="fixed inset-0 z-55 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-amber-50 to-orange-100 rounded-3xl max-w-xl w-full p-8 shadow-2xl border border-amber-200 text-center relative overflow-hidden flex flex-col items-center">
+            {/* Elegant Background Accents */}
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-200 rounded-full blur-3xl opacity-60"></div>
+            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-orange-300 rounded-full blur-3xl opacity-40"></div>
+            
+            {/* Award/Star Icon with animation */}
+            <div className="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center text-white shadow-lg mb-6 ring-8 ring-amber-100">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2.5" stroke="currentColor" className="w-8 h-8">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499c.173-.435.766-.435.94 0l2.09 5.2 5.56.494c.475.042.665.627.31.954l-4.17 3.965 1.15 5.5c.1.474-.413.847-.827.58l-4.76-2.92-4.76 2.92c-.414.267-.927-.106-.827-.58l1.15-5.5-4.17-3.965c-.355-.327-.165-.912.31-.954l5.56-.494 2.09-5.2Z" />
+              </svg>
+            </div>
+
+            <h3 className="font-extrabold text-amber-900 text-2xl tracking-tight mb-2 uppercase">
+              ¡Reconocimiento Especial!
+            </h3>
+            
+            <p className="text-xs font-semibold text-amber-800 mb-6 font-serif italic">
+              "La grandeza de una comunidad se mide por la generosidad de sus aportantes"
+            </p>
+            
+            <div className="bg-white/85 backdrop-blur-xs border border-amber-200/55 rounded-2xl p-5 w-full mb-6 space-y-3 shadow-xs">
+              <p className="text-slate-700 text-xs leading-relaxed">
+                ¡Muchísimas gracias, <strong className="text-amber-700 text-sm font-black">{specialThankYou.backerName}</strong>! Tu extraordinario aporte de <strong className="text-emerald-700 text-sm font-bold font-mono">${specialThankYou.amount.toLocaleString('es-AR')}</strong> representa un <strong className="text-amber-700 text-sm font-extrabold font-mono">{specialThankYou.percent}%</strong> de la meta para el recurso indispensable:
+              </p>
+              <div className="py-2.5 px-4 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Insumo Reclamado</p>
+                <p className="text-xs font-extrabold text-amber-900">{specialThankYou.componentName}</p>
+                <p className="text-[10px] text-amber-700/80 font-medium mt-0.5">En el Proyecto: {specialThankYou.projectName}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-amber-700 font-medium leading-relaxed max-w-sm mb-6">
+              Tu compromiso acelera de manera sustancial la finalización de este proyecto y la concreción de los objetivos comunes de nuestra comunidad.
+            </p>
+
+            <button
+              onClick={() => {
+                setSpecialThankYou(null);
+                showAlert('success', `Aporte reservado. Por favor realiza la transferencia bancaria y carga tu comprobante desde la pestaña "Mis Aportes" para recibir la validación.`);
+              }}
+              className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-md hover:shadow-lg cursor-pointer"
+            >
+              Entendido y Copiar Cupón
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Legal & Support Hub Modal Overlay */}
       <LegalViews
         isOpen={activeLegalTab !== null}
@@ -3621,6 +3899,129 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Documento Adjunto del Proyecto (PDF o Imagen) */}
+              <div className="border border-slate-150 rounded-2xl p-4 bg-slate-50/30 space-y-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                  Documento Adjunto (Opcional - PDF o Imagen)
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Cargue un archivo PDF o imagen descriptiva que detalle el propósito, planos o presupuestos del proyecto.
+                </p>
+                
+                <div className="flex flex-col sm:flex-row items-center gap-3">
+                  <label className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer text-xs font-bold text-slate-700 flex items-center gap-1.5 shadow-2xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
+                    <span>Seleccionar Archivo</span>
+                    <input
+                      type="file"
+                      accept=".pdf,image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 3 * 1024 * 1024) {
+                            showAlert('error', 'El archivo no debe superar los 3 MB.');
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            setEditProjectDocumentUrl(evt.target?.result as string);
+                            setEditProjectDocumentName(file.name);
+                            showAlert('success', `Archivo "${file.name}" cargado con éxito.`);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {editProjectDocumentName ? (
+                    <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl text-xs font-semibold">
+                      <span className="truncate max-w-[200px]">{editProjectDocumentName}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditProjectDocumentUrl('');
+                          setEditProjectDocumentName('');
+                        }}
+                        className="text-emerald-600 hover:text-emerald-900 font-bold"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 font-medium">Ningún archivo seleccionado</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Reel de Fotos del Proyecto (Máximo 8) */}
+              <div className="border border-slate-150 rounded-2xl p-4 bg-slate-50/30 space-y-3">
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide">
+                  Reel de Fotos del Proyecto (Hasta 8 imágenes)
+                </label>
+                <p className="text-[11px] text-slate-500">
+                  Agregue fotos que estén relacionadas con la obra, evento o terreno del proyecto.
+                </p>
+                
+                <div className="space-y-3">
+                  <label className="px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl transition cursor-pointer text-xs font-bold text-slate-700 flex inline-flex items-center gap-1.5 shadow-2xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 47.86 0 0 0-3.472 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                    </svg>
+                    <span>Agregar Foto ({editProjectPhotoReel.length}/8)</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      disabled={editProjectPhotoReel.length >= 8}
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []) as File[];
+                        if (editProjectPhotoReel.length + files.length > 8) {
+                          showAlert('error', 'Solo puede cargar un máximo de 8 fotos en el reel.');
+                          return;
+                        }
+                        
+                        files.forEach((file) => {
+                          if (file.size > 800 * 1024) {
+                            showAlert('error', `La foto "${file.name}" supera los 800KB. Utilice una imagen de menor peso.`);
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (evt) => {
+                            const resStr = evt.target?.result as string;
+                            setEditProjectPhotoReel((prev) => [...prev, resStr]);
+                          };
+                          reader.readAsDataURL(file);
+                        });
+                      }}
+                    />
+                  </label>
+
+                  {editProjectPhotoReel.length > 0 && (
+                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                      {editProjectPhotoReel.map((img, i) => (
+                        <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-100 bg-slate-50">
+                          <img src={img} className="w-full h-full object-cover" alt="Reel image" referrerPolicy="no-referrer" />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditProjectPhotoReel((prev) => prev.filter((_, idx) => idx !== i));
+                            }}
+                            className="absolute inset-0 bg-red-600/70 text-white font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer text-[10px]"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Interactive Supplies/Requirements Grid */}
               <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/40 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
@@ -3666,9 +4067,10 @@ export default function App() {
                   <table className="w-full text-left text-xs">
                     <thead>
                       <tr className="border-b border-slate-150 bg-slate-50 font-extrabold uppercase text-[9px] tracking-wider text-slate-400">
-                        <th className="py-2.5 px-3 w-3/5">DESCRIPCIÓN / INSUMO / SERVICIO</th>
-                        <th className="py-2.5 px-3 w-1/5 text-right">CANTIDAD</th>
-                        <th className="py-2.5 px-3 w-1/5 text-right">PRECIO UNITARIO ($)</th>
+                        <th className="py-2.5 px-3 w-[45%]">DESCRIPCIÓN / INSUMO / SERVICIO</th>
+                        <th className="py-2.5 px-3 w-[15%] text-right">CANTIDAD</th>
+                        <th className="py-2.5 px-3 w-[15%] text-right">PRECIO UNITARIO ($)</th>
+                        <th className="py-2.5 px-3 w-[15%] text-center">UMBRAL AGRADEC. (%)</th>
                         <th className="py-2.5 px-3 text-right">TOTAL ($)</th>
                         <th className="py-2.5 px-3 text-center">ELIMINAR</th>
                       </tr>
@@ -3719,6 +4121,22 @@ export default function App() {
                                 setEditProjectComponentsGrid(updated);
                               }}
                               className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 font-mono text-right"
+                            />
+                          </td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              required
+                              min="1"
+                              max="100"
+                              value={item.thank_you_threshold_percent || 50}
+                              onChange={(e) => {
+                                const val = Math.min(100, Math.max(1, parseInt(e.target.value) || 50));
+                                const updated = [...editProjectComponentsGrid];
+                                updated[index].thank_you_threshold_percent = val;
+                                setEditProjectComponentsGrid(updated);
+                              }}
+                              className="w-full text-xs px-2 py-1.5 border border-slate-200 rounded-lg focus:outline-hidden focus:border-blue-500 font-mono text-center font-semibold"
                             />
                           </td>
                           <td className="p-2 text-right font-bold text-slate-700 font-mono pr-4 shrink-0 whitespace-nowrap">

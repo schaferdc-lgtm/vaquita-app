@@ -29,6 +29,10 @@ export interface Project {
   tk_mp_payment_id?: string;
   tk_mp_payment_status?: string;
   tk_payment_ticket?: string;
+  max_duration_months?: number; // admin duration config limit
+  document_url?: string; // base64 or URL for project document (PDF/Image)
+  document_name?: string; // filename of loaded project document
+  photo_reel?: string[]; // array of base64 images (max 8)
 }
 
 export interface ProjectComponent {
@@ -41,6 +45,7 @@ export interface ProjectComponent {
   funded_amount: number; // accumulated currency for items that support partial funding
   allow_partial: boolean; // flag: unit_price > 100,000 and quantity < 3
   total_price: number; // quantity * unit_price
+  thank_you_threshold_percent?: number; // percentage threshold for special thank-you poster
 }
 
 export interface Contribution {
