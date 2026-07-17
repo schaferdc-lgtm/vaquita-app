@@ -238,6 +238,45 @@ alter table public.contributions enable row level security;`;
                 </svg>
                 <span>Iniciar Sesión Real con Gmail</span>
               </button>
+
+              {/* Guía detallada para activar Google Provider en Supabase */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2.5 text-xs text-amber-900 leading-relaxed mt-2">
+                <div className="font-bold flex items-center gap-1.5 text-amber-950 text-xs uppercase tracking-wide">
+                  <span>🛠️ ¿Obtienes error "Unsupported provider" o "not enabled"?</span>
+                </div>
+                <p>
+                  Por defecto, Supabase requiere que habilites manualmente el proveedor de Google en su panel de administración para poder usar la autenticación real:
+                </p>
+                <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-amber-900 font-medium">
+                  <li>
+                    Ingresa a tu <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline font-bold hover:text-amber-700">Consola de Supabase</a> y selecciona tu proyecto.
+                  </li>
+                  <li>
+                    Ve a la pestaña <strong>Authentication</strong> en la barra lateral izquierda (ícono de llave o candado).
+                  </li>
+                  <li>
+                    Haz clic en la opción <strong>Sign In / Providers</strong> (que está en el menú izquierdo bajo CONFIGURATION).
+                  </li>
+                  <li>
+                    Busca <strong>Google</strong> en la lista y haz clic para expandirlo.
+                  </li>
+                  <li>
+                    Activa la opción <strong>"Enable Google Provider"</strong> (Habilitar proveedor Google).
+                  </li>
+                  <li>
+                    Ingresa tu <strong>Client ID</strong> y tu <strong>Client Secret</strong> (los cuales obtienes de tu consola de Google Cloud).
+                  </li>
+                  <li>
+                    Copia la <strong>Redirect URI</strong> que te muestra Supabase y agrégala a las credenciales de tu proyecto en la Google Cloud Console.
+                  </li>
+                  <li>
+                    Guarda los cambios en Supabase. ¡Listo! Ya podrás iniciar sesión de manera real.
+                  </li>
+                </ol>
+                <div className="bg-amber-100/50 p-2.5 rounded-lg text-[10.5px] text-amber-950 font-semibold leading-relaxed border border-amber-200/50">
+                  💡 <strong>¿No quieres configurar Google Cloud Console aún?</strong> No te preocupes. Puedes usar la <strong>simulación de Google Sign-In</strong> abajo en esta misma pantalla, o ingresar directamente tu correo en la pantalla de inicio. Funciona exactamente igual de bien con tu base de datos de Supabase.
+                </div>
+              </div>
             </div>
           )}
 

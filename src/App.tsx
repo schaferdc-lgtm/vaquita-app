@@ -1637,15 +1637,28 @@ export default function App() {
 
           <div className="space-y-4">
             {/* Opción 1: Login Real con Google */}
-            <button
-              onClick={handleRealGoogleLogin}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition duration-200 flex items-center justify-center gap-2.5 cursor-pointer"
-            >
-              <svg className="w-4.5 h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
-                <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 018 12.5a5.99 5.99 0 015.991-6.014c1.558 0 2.902.593 3.935 1.557l3.07-3.07C19.141 3.115 16.733 2 13.99 2 8.473 2 4 6.473 4 12s4.473 10 9.99 10c5.77 0 9.814-4.057 9.814-9.99 0-.6-.054-1.18-.15-1.725H12.24z"/>
-              </svg>
-              <span>Iniciar Sesión Real con Google</span>
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={handleRealGoogleLogin}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition duration-200 flex items-center justify-center gap-2.5 cursor-pointer"
+              >
+                <svg className="w-4.5 h-4.5 fill-current shrink-0" viewBox="0 0 24 24">
+                  <path d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 018 12.5a5.99 5.99 0 015.991-6.014c1.558 0 2.902.593 3.935 1.557l3.07-3.07C19.141 3.115 16.733 2 13.99 2 8.473 2 4 6.473 4 12s4.473 10 9.99 10c5.77 0 9.814-4.057 9.814-9.99 0-.6-.054-1.18-.15-1.725H12.24z"/>
+                </svg>
+                <span>Iniciar Sesión Real con Google</span>
+              </button>
+              
+              <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-[10px] text-amber-800 text-left leading-relaxed">
+                <span className="font-bold flex items-center gap-1 mb-0.5 text-amber-900">
+                  ⚠️ ¿Error "Unsupported provider"?
+                </span>
+                Si te aparece este error, significa que debes <strong>activar el proveedor Google</strong> en tu consola de Supabase (<strong>Authentication → Sign In / Providers → Google → ON</strong>) y configurar tus llaves de Google.
+                <p className="mt-1 font-semibold text-slate-700">
+                  💡 Solución alternativa inmediata:
+                </p>
+                Escribe tu dirección de Gmail en el recuadro de abajo e ingresa directamente en modo simulación (sin requerir configurar Google Auth).
+              </div>
+            </div>
 
             {/* Separador */}
             <div className="flex items-center gap-2 text-slate-300">
