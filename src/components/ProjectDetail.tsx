@@ -1122,21 +1122,16 @@ export default function ProjectDetail({
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center justify-between">
                     <span>Fecha de Inicio</span>
                     {project.is_approved && (
-                      <span className="text-[8px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 font-extrabold uppercase font-sans">Congelado (Vigente)</span>
+                      <span className="text-[8px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-extrabold uppercase font-sans">Vigente</span>
                     )}
                   </label>
                   <input
                     type="date"
-                    disabled={project.is_approved === true}
                     value={editedStartDate}
                     onChange={(e) => setEditedStartDate(e.target.value)}
-                    className={`w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white ${
-                      project.is_approved ? 'opacity-70 bg-slate-50 cursor-not-allowed border-amber-200' : ''
-                    }`}
+                    className="w-full text-xs px-3 py-2 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 font-mono bg-white"
                   />
-                  {project.is_approved && (
-                    <p className="text-[9px] text-slate-400 mt-1">La fecha de inicio no se puede modificar porque el proyecto está vigente.</p>
-                  )}
+                  <p className="text-[9px] text-slate-400 mt-1">La fecha de inicio se puede modificar (debe ser mayor o igual a la fecha actual).</p>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">

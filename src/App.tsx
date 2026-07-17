@@ -3777,22 +3777,17 @@ export default function App() {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center gap-1">
                     Fecha de Inicio de Campaña
                     {editingProject.is_approved && (
-                      <span className="text-[9px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200 uppercase font-black tracking-wider font-sans">Congelado (Vigente)</span>
+                      <span className="text-[9px] text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 uppercase font-black tracking-wider font-sans">Vigente</span>
                     )}
                   </label>
                   <input
                     type="date"
                     required
-                    disabled={editingProject.is_approved === true}
                     value={editProjectStartDate}
                     onChange={(e) => setEditProjectStartDate(e.target.value)}
-                    className={`w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono ${
-                      editingProject.is_approved ? 'bg-slate-55/90 opacity-70 cursor-not-allowed border-amber-250' : ''
-                    }`}
+                    className="w-full text-xs px-3.5 py-2.5 border border-slate-200 rounded-xl focus:outline-hidden focus:border-blue-500 bg-white font-mono"
                   />
-                  {editingProject.is_approved && (
-                    <p className="text-[9px] text-slate-400 mt-1 leading-tight">La fecha de inicio no se puede modificar porque el proyecto ya está vigente.</p>
-                  )}
+                  <p className="text-[9px] text-slate-400 mt-1 leading-tight">La fecha de inicio de campaña se puede modificar (debe ser mayor o igual a la fecha actual).</p>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wide mb-1">
