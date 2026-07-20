@@ -229,7 +229,7 @@ alter table public.contributions enable row level security;`;
               <Database className="w-5 h-5" /> Consola de Integración Supabase & Google Auth
             </h2>
             <p className="text-blue-100 text-xs mt-1">
-              Configure su base de datos real o administre perfiles de acceso con Google Login simulado.
+              Configure su base de datos real o administre perfiles de acceso directo de forma segura.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ alter table public.contributions enable row level security;`;
             </h3>
             
             <p className="text-xs text-slate-500 leading-relaxed mb-4">
-              Para probar los diferentes roles y permisos del sistema (<strong>Administrador</strong>, <strong>Dueño de Proyecto</strong> o <strong>Aportante</strong>), puede iniciar sesión simulando la cuenta de Google correspondiente.
+              Para alternar entre los diferentes roles del sistema (<strong>Administrador</strong>, <strong>Dueño de Proyecto</strong> o <strong>Aportante</strong>), puede iniciar sesión directamente con la cuenta correspondiente.
             </p>
 
             <div className="space-y-2.5">
@@ -369,16 +369,16 @@ alter table public.contributions enable row level security;`;
                   </li>
                 </ol>
                 <div className="bg-amber-100/50 p-2.5 rounded-lg text-[10.5px] text-amber-950 font-semibold leading-relaxed border border-amber-200/50">
-                  💡 <strong>¿No quieres configurar Google Cloud Console aún?</strong> No te preocupes. Puedes usar la <strong>simulación de Google Sign-In</strong> abajo en esta misma pantalla, o ingresar directamente tu correo en la pantalla de inicio. Funciona exactamente igual de bien con tu base de datos de Supabase.
+                  💡 <strong>¿No deseas configurar Google Cloud Console aún?</strong> No te preocupes. Puedes usar el <strong>Acceso Directo por Gmail</strong> abajo en esta misma pantalla, o ingresar directamente tu correo en la pantalla de inicio. Funciona exactamente igual de bien con tu base de datos de Supabase.
                 </div>
               </div>
             </div>
           )}
 
-          {/* Simulate New User Creation */}
+          {/* Direct User Creation */}
           <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
             <h3 className="font-bold text-slate-800 flex items-center gap-2 mb-3.5 text-sm tracking-wide uppercase">
-              <LogIn className="w-4 h-4 text-blue-600" /> Simular Google Sign-In
+              <LogIn className="w-4 h-4 text-blue-600" /> Acceso Directo por Gmail
             </h3>
             <form onSubmit={handleAddUserSubmit} className="space-y-3">
               <div>

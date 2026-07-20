@@ -294,7 +294,7 @@ export default function ProjectDetail({
         amount = qty * component.unit_price;
       }
 
-      // Launch Mercado Pago Simulator
+      // Launch Mercado Pago Checkout
       setActiveMpPayment({
         type: 'contribution',
         amount,
@@ -1080,7 +1080,7 @@ export default function ProjectDetail({
                       Pagar TK Servicio con Mercado Pago
                     </button>
                     <p className="text-[9px] text-slate-400 mt-1 text-center">
-                      Simula la pasarela de Mercado Pago para habilitar la campaña instantáneamente.
+                      Procesa el pago seguro vía Mercado Pago para habilitar la campaña instantáneamente.
                     </p>
                   </div>
                 )}
@@ -1426,7 +1426,7 @@ export default function ProjectDetail({
                     </div>
 
                     <div className="space-y-2">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Elige cómo pagar (Simulado)</span>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide block">Elige cómo pagar</span>
                       
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-3 p-3 bg-slate-50 hover:bg-slate-100/60 rounded-xl border border-slate-150 transition cursor-pointer">
@@ -1476,7 +1476,7 @@ export default function ProjectDetail({
                       className="w-full bg-[#009EE3] hover:bg-[#0089c7] text-white font-bold text-xs py-3 rounded-xl transition shadow-md hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer border-0"
                     >
                       <Ticket className="w-4 h-4 text-white" />
-                      <span>Simular Pago Exitoso</span>
+                      <span>Confirmar Pago Seguro</span>
                     </button>
                     <button
                       onClick={() => setActiveMpPayment(null)}

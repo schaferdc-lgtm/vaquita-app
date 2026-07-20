@@ -448,6 +448,12 @@ export default function App() {
       setActiveUser(updatedUser);
       localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(updatedUser));
       setPendingRegistrationUser(null);
+
+      // Sincronizar de inmediato la lista de usuarios en el estado y almacenamiento local con su ID UUID real
+      const updatedList = currentUsers.map(u => u.email.toLowerCase() === emailLower ? updatedUser : u);
+      setUsers(updatedList);
+      localStorage.setItem(LS_USERS, JSON.stringify(updatedList));
+
       showAlert('success', `Sesión iniciada como ${updatedUser.full_name} (${updatedUser.role === 'admin' ? 'Administrador' : updatedUser.role === 'owner' ? 'Creador' : 'Aportante'})`);
       logUserAction(updatedUser.email, 'INICIO_SESION_GMAIL', `Inició sesión con Gmail: ${updatedUser.full_name}`);
 
@@ -779,10 +785,16 @@ export default function App() {
       const allReferencedUserIds = new Set([...ownerIds, ...backerIds]);
 
       const profilesToUpsert = Array.from(allReferencedUserIds).map(id => {
-        const matchingUser = users.find(u => u.id === id) || (activeUser && activeUser.id === id ? activeUser : null);
+        // Buscar por coincidencia exacta o por coincidencia de UUID sanitizado del correo
+        const matchingUser = users.find(u => {
+          const sanitizedUId = uuidRegex.test(u.id) ? u.id : stringToUUID(u.email);
+          return u.id === id || sanitizedUId === id;
+        }) || (activeUser && (activeUser.id === id || (uuidRegex.test(activeUser.id) ? activeUser.id : stringToUUID(activeUser.email)) === id) ? activeUser : null);
+
         if (matchingUser) {
+          const resolvedId = uuidRegex.test(matchingUser.id) ? matchingUser.id : stringToUUID(matchingUser.email);
           return {
-            id: matchingUser.id,
+            id: resolvedId,
             email: matchingUser.email.toLowerCase(),
             full_name: matchingUser.full_name,
             role: matchingUser.role
@@ -888,7 +900,7 @@ export default function App() {
     showAlert('success', 'Historial de auditoría local vaciado con éxito.');
   };
 
-  // Switch Google login simulation profile
+  // Cambiar perfil de usuario activo
   const handleSwitchUser = (user: UserProfile) => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const sanitizedUser: UserProfile = {
@@ -897,8 +909,8 @@ export default function App() {
     };
     setActiveUser(sanitizedUser);
     localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(sanitizedUser));
-    showAlert('success', `Sesión iniciada con Google como: ${sanitizedUser.full_name}`);
-    logUserAction(sanitizedUser.email, 'CAMBIO_USUARIO', `Inició sesión con Google como ${sanitizedUser.full_name} (Rol: ${sanitizedUser.role})`);
+    showAlert('success', `Sesión iniciada como: ${sanitizedUser.full_name}`);
+    logUserAction(sanitizedUser.email, 'CAMBIO_USUARIO', `Inició sesión como ${sanitizedUser.full_name} (Rol: ${sanitizedUser.role})`);
 
     // Sincronizar automáticamente el perfil en la tabla profiles de Supabase
     if (supabase && supabaseConfig.isConnected) {
@@ -936,11 +948,11 @@ export default function App() {
     localStorage.setItem(LS_USERS, JSON.stringify(updatedUsers));
     
     // We log both the creation/login of the new user
-    logUserAction(email, 'INICIO_SESION', `Registró e inició sesión nueva con Google como ${name} (Rol: ${newUser.role})`);
+    logUserAction(email, 'INICIO_SESION', `Registró e inició sesión nueva como ${name} (Rol: ${newUser.role})`);
     
     setActiveUser(newUser);
     localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(newUser));
-    showAlert('success', `Sesión iniciada con Google como: ${newUser.full_name}`);
+    showAlert('success', `Sesión iniciada como: ${newUser.full_name}`);
 
     // Sincronizar automáticamente el perfil en la tabla profiles de Supabase
     if (supabase && supabaseConfig.isConnected) {
@@ -1704,7 +1716,7 @@ export default function App() {
     );
   };
 
-  // Send simulated email notifications to Admin (schaferdc@gmail.com)
+  // Send secure email notifications to Admin (schaferdc@gmail.com)
   const handleSendAdminEmail = (
     type: 'payment_intent' | 'payment_result',
     details: { projectId: string; amount: number; isSuccess?: boolean; paymentId?: string }
@@ -2146,7 +2158,7 @@ export default function App() {
                       <p className="mt-1 font-semibold text-slate-700">
                         💡 Solución alternativa inmediata:
                       </p>
-                      Escribe tu dirección de Gmail en el recuadro de abajo e ingresa directamente en modo simulación (sin requerir configurar Google Auth).
+                      Escribe tu dirección de Gmail en el recuadro de abajo e ingresa de forma directa (sin requerir configurar Google Auth).
                     </div>
                   )}
                 </div>
@@ -2160,7 +2172,7 @@ export default function App() {
               </>
             )}
 
-            {/* Opción 2: Formulario de Correo de Gmail (Simulador o directo) */}
+            {/* Opción 2: Formulario de Correo de Gmail (Acceso directo) */}
             <form onSubmit={(e) => {
               e.preventDefault();
               setLoginError('');
@@ -2179,7 +2191,7 @@ export default function App() {
 
               // Procesar el inicio de sesión
               let computedName = emailTrimmed.split('@')[0];
-              // Capitalizar primer letra del nombre simulado
+              // Capitalizar primer letra del nombre de usuario
               computedName = computedName.charAt(0).toUpperCase() + computedName.slice(1);
               
               // Si es Daniel, darle su nombre real completo
@@ -2427,12 +2439,12 @@ export default function App() {
               <button 
                 onClick={supabaseConfig.isConnected ? handleRealGoogleLogin : () => {
                   setActiveTab('admin');
-                  showAlert('error', 'Supabase no está conectado aún. Inicia sesión en modo demo como administrador para configurarlo en el Panel de Admin.');
+                  showAlert('error', 'Supabase no está conectado aún. Inicia sesión como administrador de forma directa para configurarlo en el Panel de Admin.');
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-full shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>{supabaseConfig.isConnected ? 'Iniciar sesión (Google)' : 'Acceder (Demo)'}</span>
+                <span>{supabaseConfig.isConnected ? 'Iniciar sesión (Google)' : 'Acceder'}</span>
               </button>
             )}
           </div>

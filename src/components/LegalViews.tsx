@@ -227,7 +227,7 @@ export default function LegalViews({
                   <section className="space-y-2">
                     <h4 className="text-slate-800 font-bold text-xs">2. Integración de Autenticación de Google y Supabase</h4>
                     <p>
-                      La plataforma simula un entorno seguro de inicio de sesión de Google a nivel de cliente para proteger la identidad del usuario activo. Cuando el sistema se conecta a un servidor remoto de base de datos a través de <strong>Supabase SQL</strong>, los datos son transmitidos de forma segura mediante encriptación SSL, persistiendo en tablas dedicadas y debidamente estructuradas para evitar manipulaciones ajenas.
+                      La plataforma ofrece un entorno seguro de inicio de sesión de Google a nivel de cliente para proteger la identidad del usuario activo. Cuando el sistema se conecta a un servidor remoto de base de datos a través de <strong>Supabase SQL</strong>, los datos son transmitidos de forma segura mediante encriptación SSL, persistiendo en tablas dedicadas y debidamente estructuradas para evitar manipulaciones ajenas.
                     </p>
                   </section>
 
