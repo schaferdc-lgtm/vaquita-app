@@ -773,36 +773,69 @@ export default function App() {
     localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(sanitizedContributions));
 
     if (supabase && supabaseConfig.isConnected) {
-      // 1. Upsert projects
-      if (sanitizedProjects.length > 0) {
-        supabase
-          .from('projects')
-          .upsert(sanitizedProjects)
-          .then(({ error }) => {
-            if (error) console.error('Error upserting projects to Supabase:', error);
-          });
-      }
+      // Coleccionar todos los IDs de perfiles que necesitan ser referenciados
+      const ownerIds = new Set(sanitizedProjects.map(p => p.owner_id));
+      const backerIds = new Set(sanitizedContributions.map(c => c.backer_id).filter(Boolean) as string[]);
+      const allReferencedUserIds = new Set([...ownerIds, ...backerIds]);
 
-      // 2. Upsert components (exclude total_price generated column)
-      if (sanitizedComponents.length > 0) {
-        const componentsToUpsert = sanitizedComponents.map(({ total_price, ...rest }) => rest);
-        supabase
-          .from('components')
-          .upsert(componentsToUpsert)
-          .then(({ error }) => {
-            if (error) console.error('Error upserting components to Supabase:', error);
-          });
-      }
+      const profilesToUpsert = Array.from(allReferencedUserIds).map(id => {
+        const matchingUser = users.find(u => u.id === id) || (activeUser && activeUser.id === id ? activeUser : null);
+        if (matchingUser) {
+          return {
+            id: matchingUser.id,
+            email: matchingUser.email.toLowerCase(),
+            full_name: matchingUser.full_name,
+            role: matchingUser.role
+          };
+        }
+        return null;
+      }).filter(Boolean);
 
-      // 3. Upsert contributions
-      if (sanitizedContributions.length > 0) {
-        supabase
-          .from('contributions')
-          .upsert(sanitizedContributions)
-          .then(({ error }) => {
-            if (error) console.error('Error upserting contributions to Supabase:', error);
+      // Paso 1: Upsert Profiles para evitar violaciones de clave foránea
+      const upsertProfiles = profilesToUpsert.length > 0
+        ? supabase.from('profiles').upsert(profilesToUpsert)
+        : Promise.resolve({ error: null });
+
+      upsertProfiles.then(({ error: profError }) => {
+        if (profError) {
+          console.error('Error upserting owner profiles to Supabase:', profError);
+        }
+
+        // Paso 2: Upsert Projects
+        const upsertProjects = sanitizedProjects.length > 0
+          ? supabase.from('projects').upsert(sanitizedProjects)
+          : Promise.resolve({ error: null });
+
+        upsertProjects.then(({ error: projError }) => {
+          if (projError) {
+            console.error('Error upserting projects to Supabase:', projError);
+          }
+
+          // Paso 3: Upsert Components (excluyendo la columna calculada total_price)
+          const componentsToUpsert = sanitizedComponents.map(({ total_price, ...rest }) => rest);
+          const upsertComponents = componentsToUpsert.length > 0
+            ? supabase.from('components').upsert(componentsToUpsert)
+            : Promise.resolve({ error: null });
+
+          upsertComponents.then(({ error: compError }) => {
+            if (compError) {
+              console.error('Error upserting components to Supabase:', compError);
+            }
+
+            // Paso 4: Upsert Contributions
+            if (sanitizedContributions.length > 0) {
+              supabase
+                .from('contributions')
+                .upsert(sanitizedContributions)
+                .then(({ error: contrError }) => {
+                  if (contrError) {
+                    console.error('Error upserting contributions to Supabase:', contrError);
+                  }
+                });
+            }
           });
-      }
+        });
+      });
     }
   };
 
@@ -866,6 +899,21 @@ export default function App() {
     localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(sanitizedUser));
     showAlert('success', `Sesión iniciada con Google como: ${sanitizedUser.full_name}`);
     logUserAction(sanitizedUser.email, 'CAMBIO_USUARIO', `Inició sesión con Google como ${sanitizedUser.full_name} (Rol: ${sanitizedUser.role})`);
+
+    // Sincronizar automáticamente el perfil en la tabla profiles de Supabase
+    if (supabase && supabaseConfig.isConnected) {
+      supabase
+        .from('profiles')
+        .upsert({
+          id: sanitizedUser.id,
+          email: sanitizedUser.email.toLowerCase(),
+          full_name: sanitizedUser.full_name,
+          role: sanitizedUser.role
+        })
+        .then(({ error }) => {
+          if (error) console.error('Error auto-syncing profile on switch user:', error);
+        });
+    }
   };
 
   const handleAddCustomUser = (email: string, name: string, role: 'admin' | 'owner' | 'backer') => {
@@ -893,6 +941,21 @@ export default function App() {
     setActiveUser(newUser);
     localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(newUser));
     showAlert('success', `Sesión iniciada con Google como: ${newUser.full_name}`);
+
+    // Sincronizar automáticamente el perfil en la tabla profiles de Supabase
+    if (supabase && supabaseConfig.isConnected) {
+      supabase
+        .from('profiles')
+        .upsert({
+          id: newUser.id,
+          email: newUser.email.toLowerCase(),
+          full_name: newUser.full_name,
+          role: newUser.role
+        })
+        .then(({ error }) => {
+          if (error) console.error('Error auto-syncing profile on custom user creation:', error);
+        });
+    }
   };
 
   const handleLogout = async () => {
