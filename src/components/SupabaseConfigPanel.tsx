@@ -592,7 +592,7 @@ alter table public.contributions enable row level security;`;
               
               <span className="text-slate-500">-- Tabla de Perfiles</span><br />
               <span className="text-blue-400">create table</span> public.profiles (<br />
-              &nbsp;&nbsp;id uuid references auth.users on delete cascade primary key,<br />
+              &nbsp;&nbsp;id uuid primary key,<br />
               &nbsp;&nbsp;email text unique not null,<br />
               &nbsp;&nbsp;full_name text,<br />
               &nbsp;&nbsp;role text not null check (role in ('admin', 'owner', 'backer')) default 'backer'<br />

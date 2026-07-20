@@ -181,17 +181,22 @@ export default function App() {
     // Hydrate users
     const localUsers = localStorage.getItem(LS_USERS);
     let loadedUsers: UserProfile[] = [];
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (localUsers) {
       try {
         loadedUsers = JSON.parse(localUsers);
-        // Migrate legacy "Diego" name to "Daniel" if found
         let migrated = false;
         loadedUsers = loadedUsers.map(u => {
-          if (u.email === 'schaferdc@gmail.com' && u.full_name.includes('Diego')) {
+          let updated = { ...u };
+          if (updated.email === 'schaferdc@gmail.com' && updated.full_name.includes('Diego')) {
+            updated.full_name = updated.full_name.replace('Diego', 'Daniel');
             migrated = true;
-            return { ...u, full_name: u.full_name.replace('Diego', 'Daniel') };
           }
-          return u;
+          if (!uuidRegex.test(updated.id)) {
+            updated.id = stringToUUID(updated.email);
+            migrated = true;
+          }
+          return updated;
         });
         if (migrated) {
           localStorage.setItem(LS_USERS, JSON.stringify(loadedUsers));
@@ -210,9 +215,19 @@ export default function App() {
     if (localActiveUser) {
       try {
         let active = JSON.parse(localActiveUser);
-        if (active && active.email === 'schaferdc@gmail.com' && active.full_name.includes('Diego')) {
-          active.full_name = active.full_name.replace('Diego', 'Daniel');
-          localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(active));
+        if (active) {
+          let migrated = false;
+          if (active.email === 'schaferdc@gmail.com' && active.full_name.includes('Diego')) {
+            active.full_name = active.full_name.replace('Diego', 'Daniel');
+            migrated = true;
+          }
+          if (!uuidRegex.test(active.id)) {
+            active.id = stringToUUID(active.email);
+            migrated = true;
+          }
+          if (migrated) {
+            localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(active));
+          }
         }
         setActiveUser(active);
       } catch (e) {
@@ -303,20 +318,30 @@ export default function App() {
       localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify([]));
     }
 
-    // Hydrate Supabase config
+    // Hydrate Supabase config (prioritizing environment variables if specified in .env)
     const localConfig = localStorage.getItem(LS_CONFIG);
-    if (localConfig) {
+    const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+    if (envUrl && envKey) {
+      setSupabaseConfig({
+        url: envUrl,
+        anonKey: envKey,
+        isConnected: true,
+      });
+      localStorage.setItem(LS_CONFIG, JSON.stringify({
+        url: envUrl,
+        anonKey: envKey,
+        isConnected: true,
+      }));
+    } else if (localConfig) {
       setSupabaseConfig(JSON.parse(localConfig));
     } else {
-      const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-      if (envUrl && envKey) {
-        setSupabaseConfig({
-          url: envUrl,
-          anonKey: envKey,
-          isConnected: true,
-        });
-      }
+      setSupabaseConfig({
+        url: '',
+        anonKey: '',
+        isConnected: false,
+      });
     }
 
     // Hydrate Admin Parameters
@@ -400,6 +425,10 @@ export default function App() {
 
     const emailLower = email.toLowerCase();
     
+    // Asegurar que el id de inicio de sesión sea un UUID válido
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const resolvedId = uuidRegex.test(id) ? id : stringToUUID(emailLower);
+
     // Obtener la última lista de usuarios de localStorage para evitar closures desactualizados
     const localUsers = localStorage.getItem(LS_USERS);
     let currentUsers: UserProfile[] = [];
@@ -412,15 +441,34 @@ export default function App() {
     const existingUser = currentUsers.find(u => u.email.toLowerCase() === emailLower);
 
     if (existingUser) {
-      setActiveUser(existingUser);
-      localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(existingUser));
+      const updatedUser = {
+        ...existingUser,
+        id: uuidRegex.test(existingUser.id) ? existingUser.id : resolvedId
+      };
+      setActiveUser(updatedUser);
+      localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(updatedUser));
       setPendingRegistrationUser(null);
-      showAlert('success', `Sesión iniciada como ${existingUser.full_name} (${existingUser.role === 'admin' ? 'Administrador' : existingUser.role === 'owner' ? 'Creador' : 'Aportante'})`);
-      logUserAction(existingUser.email, 'INICIO_SESION_GMAIL', `Inició sesión con Gmail: ${existingUser.full_name}`);
+      showAlert('success', `Sesión iniciada como ${updatedUser.full_name} (${updatedUser.role === 'admin' ? 'Administrador' : updatedUser.role === 'owner' ? 'Creador' : 'Aportante'})`);
+      logUserAction(updatedUser.email, 'INICIO_SESION_GMAIL', `Inició sesión con Gmail: ${updatedUser.full_name}`);
+
+      // Auto-sincronizar el perfil del usuario en la tabla profiles de Supabase
+      if (supabase && supabaseConfig.isConnected) {
+        supabase
+          .from('profiles')
+          .upsert({
+            id: updatedUser.id,
+            email: updatedUser.email,
+            full_name: updatedUser.full_name,
+            role: updatedUser.role
+          })
+          .then(({ error }) => {
+            if (error) console.error('Error auto-syncing profile to Supabase on login:', error);
+          });
+      }
     } else {
       if (emailLower === 'schaferdc@gmail.com') {
         const adminProfile: UserProfile = {
-          id: id || 'admin-id',
+          id: resolvedId,
           email: emailLower,
           full_name: 'Daniel Schafer',
           role: 'admin',
@@ -435,8 +483,23 @@ export default function App() {
 
         showAlert('success', 'Sesión de Administrador iniciada de forma directa: Daniel Schafer');
         logUserAction(adminProfile.email, 'INICIO_SESION_ADMIN', 'Inició sesión directamente como Administrador');
+
+        // Auto-sincronizar el perfil del administrador en la tabla profiles de Supabase
+        if (supabase && supabaseConfig.isConnected) {
+          supabase
+            .from('profiles')
+            .upsert({
+              id: adminProfile.id,
+              email: adminProfile.email,
+              full_name: adminProfile.full_name,
+              role: adminProfile.role
+            })
+            .then(({ error }) => {
+              if (error) console.error('Error auto-syncing admin profile to Supabase on login:', error);
+            });
+        }
       } else {
-        setPendingRegistrationUser({ id: id || `user-${Math.random().toString(36).substr(2, 9)}`, email: emailLower, full_name });
+        setPendingRegistrationUser({ id: resolvedId, email: emailLower, full_name });
       }
     }
   };
@@ -638,13 +701,31 @@ export default function App() {
     updatedComponents: ProjectComponent[],
     updatedContributions: Contribution[]
   ) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    // Deterministically sanitize owner_id to valid UUIDs for projects
+    const sanitizedProjects = updatedProjects.map(p => {
+      let resolvedOwnerId = p.owner_id;
+      if (!uuidRegex.test(resolvedOwnerId)) {
+        const matchingUser = users.find(u => u.id === p.owner_id);
+        if (matchingUser) {
+          resolvedOwnerId = stringToUUID(matchingUser.email);
+        } else {
+          resolvedOwnerId = stringToUUID(p.owner_id);
+        }
+      }
+      return {
+        ...p,
+        owner_id: resolvedOwnerId
+      };
+    });
+
     // Deterministically sanitize IDs to valid UUIDs for components and contributions
     const sanitizedComponents = updatedComponents.map(c => ({
       ...c,
       id: stringToUUID(c.id)
     }));
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const sanitizedContributions = updatedContributions.map(c => {
       let resolvedBackerId: string | null = null;
       if (c.backer_id && uuidRegex.test(c.backer_id)) {
@@ -656,6 +737,8 @@ export default function App() {
         );
         if (matchingUser) {
           resolvedBackerId = matchingUser.id;
+        } else if (c.backer_email) {
+          resolvedBackerId = stringToUUID(c.backer_email.toLowerCase());
         }
       }
 
@@ -667,6 +750,7 @@ export default function App() {
       };
     });
 
+    const projectsChanged = sanitizedProjects.some((p, i) => p.owner_id !== updatedProjects[i]?.owner_id);
     const componentsChanged = sanitizedComponents.some((c, i) => c.id !== updatedComponents[i]?.id);
     const contributionsChanged = sanitizedContributions.some((c, i) => 
       c.id !== updatedContributions[i]?.id || 
@@ -674,6 +758,9 @@ export default function App() {
       c.component_id !== updatedContributions[i]?.component_id
     );
 
+    if (projectsChanged) {
+      setProjects(sanitizedProjects);
+    }
     if (componentsChanged) {
       setComponents(sanitizedComponents);
     }
@@ -681,16 +768,16 @@ export default function App() {
       setContributions(sanitizedContributions);
     }
 
-    localStorage.setItem(LS_PROJECTS, JSON.stringify(updatedProjects));
+    localStorage.setItem(LS_PROJECTS, JSON.stringify(sanitizedProjects));
     localStorage.setItem(LS_COMPONENTS, JSON.stringify(sanitizedComponents));
     localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(sanitizedContributions));
 
     if (supabase && supabaseConfig.isConnected) {
       // 1. Upsert projects
-      if (updatedProjects.length > 0) {
+      if (sanitizedProjects.length > 0) {
         supabase
           .from('projects')
-          .upsert(updatedProjects)
+          .upsert(sanitizedProjects)
           .then(({ error }) => {
             if (error) console.error('Error upserting projects to Supabase:', error);
           });
@@ -770,10 +857,15 @@ export default function App() {
 
   // Switch Google login simulation profile
   const handleSwitchUser = (user: UserProfile) => {
-    setActiveUser(user);
-    localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(user));
-    showAlert('success', `Sesión iniciada con Google como: ${user.full_name}`);
-    logUserAction(user.email, 'CAMBIO_USUARIO', `Inició sesión con Google como ${user.full_name} (Rol: ${user.role})`);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const sanitizedUser: UserProfile = {
+      ...user,
+      id: uuidRegex.test(user.id) ? user.id : stringToUUID(user.email)
+    };
+    setActiveUser(sanitizedUser);
+    localStorage.setItem(LS_ACTIVE_USER, JSON.stringify(sanitizedUser));
+    showAlert('success', `Sesión iniciada con Google como: ${sanitizedUser.full_name}`);
+    logUserAction(sanitizedUser.email, 'CAMBIO_USUARIO', `Inició sesión con Google como ${sanitizedUser.full_name} (Rol: ${sanitizedUser.role})`);
   };
 
   const handleAddCustomUser = (email: string, name: string, role: 'admin' | 'owner' | 'backer') => {
@@ -785,7 +877,7 @@ export default function App() {
     }
 
     const newUser: UserProfile = {
-      id: `user-${Math.random().toString(36).substring(2, 9)}`,
+      id: stringToUUID(email),
       email,
       full_name: name,
       role: email.toLowerCase() === 'schaferdc@gmail.com' ? 'admin' : role, // Enforce schaferdc as Admin!
@@ -1799,23 +1891,24 @@ export default function App() {
               showAlert('success', '¡Perfil configurado con éxito! Bienvenido a VaquitaApp.');
               logUserAction(newProfile.email, 'REGISTRO_PERFIL_NUEVO', `Se registró con rol ${newProfile.role} y nombre ${newProfile.full_name}`);
 
-              // Sincronizar perfil con la base de datos de Supabase si está disponible y es un ID real
+              // Sincronizar perfil con la base de datos de Supabase si está disponible
               if (supabase) {
-                const isRealUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(newProfile.id);
-                if (isRealUuid) {
-                  supabase
-                    .from('profiles')
-                    .update({
-                      full_name: newProfile.full_name,
-                      role: newProfile.role
-                    })
-                    .eq('id', newProfile.id)
-                    .then(({ error }) => {
-                      if (error) {
-                        console.error('Error updating profile in Supabase profiles table:', error);
-                      }
-                    });
-                }
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                const resolvedId = uuidRegex.test(newProfile.id) ? newProfile.id : stringToUUID(newProfile.email);
+                
+                supabase
+                  .from('profiles')
+                  .upsert({
+                    id: resolvedId,
+                    email: newProfile.email.toLowerCase(),
+                    full_name: newProfile.full_name,
+                    role: newProfile.role
+                  })
+                  .then(({ error }) => {
+                    if (error) {
+                      console.error('Error upserting profile in Supabase profiles table:', error);
+                    }
+                  });
               }
             }} className="space-y-5">
               

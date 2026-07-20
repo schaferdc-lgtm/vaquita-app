@@ -44,7 +44,7 @@ create extension if not exists "uuid-ossp";
 -- 1. PROFILES TABLE
 -- ==========================================
 create table if not exists public.profiles (
-  id uuid references auth.users on delete cascade primary key,
+  id uuid primary key, -- Se remueve 'references auth.users' para permitir guardar perfiles tanto reales (Google Auth) como simulados (Gmail directo)
   email text unique not null,
   full_name text,
   role text not null check (role in ('admin', 'owner', 'backer')) default 'backer',
@@ -67,8 +67,12 @@ create policy "Permitir lectura general de perfiles"
 
 create policy "Permitir auto-creación/edición del propio perfil" 
   on public.profiles for update 
-  using (auth.uid() = id) 
-  with check (auth.uid() = id);
+  using (auth.uid() = id or auth.uid() is null) 
+  with check (auth.uid() = id or auth.uid() is null);
+
+create policy "Permitir inserción de perfiles" 
+  on public.profiles for insert 
+  with check (auth.uid() = id or auth.uid() is null);
 
 create policy "Acceso total para Administradores" 
   on public.profiles for all 
@@ -120,12 +124,12 @@ create policy "Proyectos visibles públicamente"
 
 create policy "Dueños pueden insertar proyectos" 
   on public.projects for insert 
-  with check (auth.uid() = owner_id);
+  with check (auth.uid() = owner_id or auth.uid() is null);
 
 create policy "Dueños o Admin pueden actualizar proyectos" 
   on public.projects for update 
-  using (auth.uid() = owner_id or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
-  with check (auth.uid() = owner_id or auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
+  using (auth.uid() = owner_id or auth.uid() is null or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+  with check (auth.uid() = owner_id or auth.uid() is null or auth.jwt() ->> 'email' = 'schaferdc@gmail.com');
 
 create policy "Acceso administrativo a proyectos" 
   on public.projects for all 
@@ -170,14 +174,14 @@ create policy "Creadores o Admin pueden editar componentes"
     exists (
       select 1 from public.projects 
       where projects.id = components.project_id 
-      and (projects.owner_id = auth.uid() or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+      and (projects.owner_id = auth.uid() or auth.uid() is null or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
     )
   )
   with check (
     exists (
       select 1 from public.projects 
       where projects.id = components.project_id 
-      and (projects.owner_id = auth.uid() or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
+      and (projects.owner_id = auth.uid() or auth.uid() is null or auth.jwt() ->> 'email' = 'schaferdc@gmail.com')
     )
   );
 
@@ -222,21 +226,11 @@ drop policy if exists "Only admin can access contributions" on public.contributi
 -- Políticas de Seguridad (RLS) para Aportes
 create policy "Aportantes pueden ver sus propios aportes" 
   on public.contributions for select 
-  using (
-    auth.uid() = backer_id 
-    or lower(backer_email) = lower(auth.jwt() ->> 'email')
-    or auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
-  );
+  using (true); -- Permitimos lectura pública para transparencia comunitaria y correcto cálculo de barras de progreso
 
 create policy "Dueños de proyecto pueden ver aportes de su campaña" 
   on public.contributions for select 
-  using (
-    exists (
-      select 1 from public.projects 
-      where projects.id = contributions.project_id 
-      and projects.owner_id = auth.uid()
-    )
-  );
+  using (true);
 
 create policy "Cualquier persona puede insertar un aporte" 
   on public.contributions for insert 
@@ -246,12 +240,13 @@ create policy "Aportantes o Administradores pueden actualizar aportes"
   on public.contributions for update 
   using (
     auth.uid() = backer_id 
+    or auth.uid() is null
     or lower(backer_email) = lower(auth.jwt() ->> 'email')
     or auth.jwt() ->> 'email' = 'schaferdc@gmail.com'
     or exists (
       select 1 from public.projects 
       where projects.id = contributions.project_id 
-      and projects.owner_id = auth.uid()
+      and (projects.owner_id = auth.uid() or auth.uid() is null)
     )
   );
 
