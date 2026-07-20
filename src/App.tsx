@@ -811,6 +811,8 @@ export default function App() {
       upsertProfiles.then(({ error: profError }) => {
         if (profError) {
           console.error('Error upserting owner profiles to Supabase:', profError);
+          setSupabaseError(`Perfiles: ${profError.message}`);
+          showAlert('error', `Error al sincronizar perfiles en Supabase: ${profError.message}`);
         }
 
         // Paso 2: Upsert Projects
@@ -821,6 +823,8 @@ export default function App() {
         upsertProjects.then(({ error: projError }) => {
           if (projError) {
             console.error('Error upserting projects to Supabase:', projError);
+            setSupabaseError(`Proyectos: ${projError.message}`);
+            showAlert('error', `Error al sincronizar proyectos en Supabase: ${projError.message}`);
           }
 
           // Paso 3: Upsert Components (excluyendo la columna calculada total_price)
@@ -832,6 +836,8 @@ export default function App() {
           upsertComponents.then(({ error: compError }) => {
             if (compError) {
               console.error('Error upserting components to Supabase:', compError);
+              setSupabaseError(`Insumos: ${compError.message}`);
+              showAlert('error', `Error al sincronizar insumos en Supabase: ${compError.message}`);
             }
 
             // Paso 4: Upsert Contributions
@@ -842,8 +848,15 @@ export default function App() {
                 .then(({ error: contrError }) => {
                   if (contrError) {
                     console.error('Error upserting contributions to Supabase:', contrError);
+                    setSupabaseError(`Aportes: ${contrError.message}`);
+                    showAlert('error', `Error al sincronizar aportes en Supabase: ${contrError.message}`);
+                  } else {
+                    setSupabaseError(null);
+                    // Acciones adicionales si fuesen necesarias tras guardar con éxito
                   }
                 });
+            } else {
+              setSupabaseError(null);
             }
           });
         });
