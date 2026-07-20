@@ -55,6 +55,7 @@ export default function App() {
     anonKey: '',
     isConnected: false,
   });
+  const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
   // --- UI NAVIGATION STATE ---
   const [activeTab, setActiveTab] = useState<'dashboard' | 'contributions' | 'admin' | 'settings'>('dashboard');
@@ -498,6 +499,7 @@ export default function App() {
       setProjects(mappedProjects);
       setComponents(mappedComponents);
       setContributions(mappedContributions);
+      setSupabaseError(null);
 
       // Guardar a localStorage
       localStorage.setItem(LS_PROJECTS, JSON.stringify(mappedProjects));
@@ -505,6 +507,7 @@ export default function App() {
       localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(mappedContributions));
     } catch (err: any) {
       console.error('Error al sincronizar datos reales desde Supabase:', err.message || err);
+      setSupabaseError(err.message || String(err));
     }
   };
 
@@ -749,7 +752,7 @@ export default function App() {
   };
 
   // Supabase Configuration Handler
-  const handleSaveSupabaseConfig = (url: string, key: string) => {
+  const handleSaveSupabaseConfig = async (url: string, key: string) => {
     updateSupabaseClient(url, key);
     const newConfig: SupabaseConfig = {
       url: url.trim(),
@@ -758,8 +761,22 @@ export default function App() {
     };
     setSupabaseConfig(newConfig);
     localStorage.setItem(LS_CONFIG, JSON.stringify(newConfig));
+    setSupabaseError(null);
+
     if (newConfig.isConnected) {
-      showAlert('success', '¡Conectado exitosamente al cliente de Supabase!');
+      showAlert('success', 'Configuración guardada. Verificando conexión...');
+      if (supabase) {
+        try {
+          const { error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
+          if (error) throw error;
+          showAlert('success', '¡Conectado exitosamente al cliente de Supabase!');
+          fetchRealDataFromSupabase();
+        } catch (e: any) {
+          const errMsg = e.message || String(e);
+          setSupabaseError(errMsg);
+          showAlert('error', `Error de conexión: ${errMsg}`);
+        }
+      }
     } else {
       showAlert('success', 'Desconectado de Supabase. Corriendo en persistencia local.');
     }
@@ -769,6 +786,7 @@ export default function App() {
     updateSupabaseClient('', '');
     const defaultCfg = { url: '', anonKey: '', isConnected: false };
     setSupabaseConfig(defaultCfg);
+    setSupabaseError(null);
     localStorage.removeItem(LS_CONFIG);
     showAlert('success', 'Configuración de Supabase reestablecida.');
   };
@@ -2109,9 +2127,31 @@ export default function App() {
           {/* Active User Google Auth UI */}
           <div className="flex items-center gap-3">
             {supabaseConfig.isConnected ? (
-              <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold flex items-center gap-1">🟢 Supabase</span>
+              supabaseError ? (
+                <button
+                  onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                  className="text-[9px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full border border-red-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-red-100 transition"
+                  title={`Error de Conexión: ${supabaseError}. Haz clic para ver y solucionar.`}
+                >
+                  🔴 Error Supabase
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                  className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-emerald-100 transition"
+                  title="Conectado a Supabase correctamente. Haz clic para ver detalles."
+                >
+                  🟢 Supabase
+                </button>
+              )
             ) : (
-              <span className="text-[9px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100 font-bold flex items-center gap-1">🟠 Modo Local</span>
+              <button
+                onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                className="text-[9px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-amber-100 transition"
+                title="Modo Local. Los datos se guardan en este navegador. Haz clic para conectar Supabase."
+              >
+                🟠 Modo Local
+              </button>
             )}
             {activeUser ? (
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 p-1.5 pr-3 rounded-full">

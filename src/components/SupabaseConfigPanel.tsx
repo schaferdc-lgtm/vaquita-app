@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { SupabaseConfig, UserProfile } from '../types';
-import { Database, Shield, Key, Eye, EyeOff, Check, Copy, Settings, HelpCircle, Terminal, LogIn } from 'lucide-react';
+import { Database, Shield, Key, Eye, EyeOff, Check, Copy, Settings, HelpCircle, Terminal, LogIn, AlertCircle, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface SupabaseConfigPanelProps {
@@ -27,15 +27,69 @@ export default function SupabaseConfigPanel({
   const [showKey, setShowKey] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   
+  // Test connection state
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  
   // Custom user state
   const [customEmail, setCustomEmail] = useState('');
   const [customName, setCustomName] = useState('');
   const [customRole, setCustomRole] = useState<'admin' | 'owner' | 'backer'>('backer');
   const [userError, setUserError] = useState('');
 
+  const handleTestConnection = async () => {
+    if (!supabase) {
+      setTestResult({
+        success: false,
+        message: 'No se ha inicializado el cliente. Por favor, guarde la configuración primero.'
+      });
+      return;
+    }
+
+    setIsTesting(true);
+    setTestResult(null);
+
+    try {
+      // Intentamos consultar la tabla de profiles o realizar una consulta simple
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('count', { count: 'exact', head: true });
+
+      if (error) {
+        throw error;
+      }
+
+      setTestResult({
+        success: true,
+        message: '¡Conexión exitosa! Supabase respondió correctamente y las tablas del esquema están listas.'
+      });
+    } catch (err: any) {
+      console.error('Error de conexión a Supabase:', err);
+      let errMsg = err.message || JSON.stringify(err);
+      
+      if (errMsg.includes('Failed to fetch')) {
+        errMsg = 'Error de Red (Failed to fetch). Verifique que la URL de su proyecto de Supabase sea correcta y que tenga acceso a internet.';
+      } else if (errMsg.includes('Invalid API key') || errMsg.includes('JWT')) {
+        errMsg = 'Clave Anon Key inválida. Verifique que la clave ingresada sea la clave pública "anon public" correcta.';
+      } else if (errMsg.includes('does not exist')) {
+        errMsg = `Error de Esquema: La tabla buscada no existe en su base de datos (${err.message}). Recuerde ejecutar el script SQL de creación de tablas en la sección de abajo.`;
+      } else if (err.code === 'PGRST111') {
+        errMsg = 'No se encontraron las tablas requeridas. Por favor ejecute el script SQL provisto abajo en la consola de Supabase.';
+      }
+
+      setTestResult({
+        success: false,
+        message: errMsg
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveConfig(urlInput.trim(), keyInput.trim());
+    setTestResult(null); // Reset test results on save
   };
 
   const handleCopySql = () => {
@@ -377,28 +431,89 @@ alter table public.contributions enable row level security;`;
                 />
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-xs cursor-pointer"
-                >
-                  Guardar y Conectar
-                </button>
-                {config.url && (
+              <div className="flex flex-col gap-3 pt-2">
+                <div className="flex gap-3">
+                  <button
+                    type="submit"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl transition shadow-xs cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span>Guardar y Conectar</span>
+                  </button>
+                  {config.url && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onResetConfig();
+                        setUrlInput('');
+                        setKeyInput('');
+                        setTestResult(null);
+                      }}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
+                    >
+                      Desconectar
+                    </button>
+                  )}
+                </div>
+
+                {config.isConnected && (
                   <button
                     type="button"
-                    onClick={() => {
-                      onResetConfig();
-                      setUrlInput('');
-                      setKeyInput('');
-                    }}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-xl transition cursor-pointer"
+                    onClick={handleTestConnection}
+                    disabled={isTesting}
+                    className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold py-2.5 px-4 rounded-xl border border-slate-200 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
-                    Desconectar
+                    {isTesting ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Database className="w-3.5 h-3.5 text-blue-600" />
+                    )}
+                    <span>{isTesting ? 'Validando conexión...' : '🧪 Probar y Validar Conexión'}</span>
                   </button>
                 )}
               </div>
             </form>
+
+            {/* Test Connection Results Area */}
+            {testResult && (
+              <div className={`mt-5 p-4 rounded-xl border animate-fade-in ${
+                testResult.success 
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}>
+                <div className="flex items-start gap-2.5">
+                  {testResult.success ? (
+                    <Check className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-wide">
+                      {testResult.success ? 'Conexión Exitosa' : 'Error de Conexión Detectado'}
+                    </p>
+                    <p className="text-xs font-medium leading-relaxed font-mono">
+                      {testResult.message}
+                    </p>
+                    
+                    {!testResult.success && (
+                      <div className="mt-3 pt-3 border-t border-red-100 space-y-1.5 text-[11px] text-red-900 leading-relaxed font-sans">
+                        <span className="font-bold">💡 Lista de Verificación y Diagnóstico:</span>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>
+                            <strong>¿Relación "profiles" no existe?</strong> Asegúrese de copiar el script SQL completo que está abajo y ejecutarlo en la sección <strong>SQL Editor</strong> en la consola de Supabase.
+                          </li>
+                          <li>
+                            <strong>¿Error de Red (Failed to Fetch)?</strong> Verifique que la URL de su proyecto empiece con <span className="font-mono bg-white px-1 border border-slate-200 rounded">https://</span> y sea la correcta.
+                          </li>
+                          <li>
+                            <strong>¿Invalid API key?</strong> Copie nuevamente la clave <code>anon / public</code> de su consola de Supabase. No confunda la clave de servicio "service_role" con la "anon" pública.
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* SQL Exporter Card */}

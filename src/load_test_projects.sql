@@ -20,7 +20,7 @@ BEGIN
   -- --------------------------------------------------------------------------------------
 
   -- A. Santiago Soler (Project Owner)
-  SELECT id INTO v_owner_id FROM auth.users WHERE email = 'creador@proyecto.com';
+  SELECT id INTO v_owner_id FROM auth.users WHERE LOWER(email) = LOWER('creador@proyecto.com');
   IF v_owner_id IS NULL THEN
     v_owner_id := 'e482701b-c741-4e0d-b8d9-2f2dbf77c3a0'::uuid;
     INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, role, aud, email_confirmed_at, confirmation_token)
@@ -37,7 +37,7 @@ BEGIN
   END IF;
 
   -- B. Daniel Schafer (Admin) - Se asocia por email para evitar colisiones de clave duplicada
-  SELECT id INTO v_admin_id FROM auth.users WHERE email = 'schaferdc@gmail.com';
+  SELECT id INTO v_admin_id FROM auth.users WHERE LOWER(email) = LOWER('schaferdc@gmail.com');
   IF v_admin_id IS NULL THEN
     v_admin_id := 'de708761-0f6d-4952-b88a-360e224e7be0'::uuid;
     INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, role, aud, email_confirmed_at, confirmation_token)
@@ -54,7 +54,7 @@ BEGIN
   END IF;
 
   -- C. Maria Luz (Backer)
-  SELECT id INTO v_backer_id FROM auth.users WHERE email = 'aportante@gmail.com';
+  SELECT id INTO v_backer_id FROM auth.users WHERE LOWER(email) = LOWER('aportante@gmail.com');
   IF v_backer_id IS NULL THEN
     v_backer_id := 'a5cb58f6-5e58-47fb-94db-99e2e604f877'::uuid;
     INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, role, aud, email_confirmed_at, confirmation_token)
