@@ -50,10 +50,31 @@ export default function App() {
   const [pendingRegistrationUser, setPendingRegistrationUser] = useState<{ id: string; email: string; full_name: string } | null>(null);
 
   // --- SUPABASE STATE ---
-  const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>({
-    url: '',
-    anonKey: '',
-    isConnected: false,
+  const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(() => {
+    try {
+      const localConfig = localStorage.getItem('collaborative_crowdfund_supabase_config');
+      if (localConfig) {
+        return JSON.parse(localConfig);
+      }
+    } catch (e) {
+      console.error('Error parsing localStorage Supabase config:', e);
+    }
+
+    const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+    if (envUrl && envKey) {
+      return {
+        url: envUrl,
+        anonKey: envKey,
+        isConnected: true,
+      };
+    }
+
+    return {
+      url: '',
+      anonKey: '',
+      isConnected: false,
+    };
   });
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
@@ -285,6 +306,16 @@ export default function App() {
     const localConfig = localStorage.getItem(LS_CONFIG);
     if (localConfig) {
       setSupabaseConfig(JSON.parse(localConfig));
+    } else {
+      const envUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      if (envUrl && envKey) {
+        setSupabaseConfig({
+          url: envUrl,
+          anonKey: envKey,
+          isConnected: true,
+        });
+      }
     }
 
     // Hydrate Admin Parameters
@@ -787,8 +818,8 @@ export default function App() {
     const defaultCfg = { url: '', anonKey: '', isConnected: false };
     setSupabaseConfig(defaultCfg);
     setSupabaseError(null);
-    localStorage.removeItem(LS_CONFIG);
-    showAlert('success', 'Configuración de Supabase reestablecida.');
+    localStorage.setItem(LS_CONFIG, JSON.stringify(defaultCfg));
+    showAlert('success', 'Configuración de Supabase reestablecida a modo local.');
   };
 
   // Add Contribution & Update Component remaining Stock (Business Logic Callback)
