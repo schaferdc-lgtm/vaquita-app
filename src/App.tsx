@@ -7,6 +7,7 @@ import {
   INITIAL_USERS, INITIAL_PROJECTS, INITIAL_COMPONENTS 
 } from './data';
 import { supabase, isSupabaseConfigured, updateSupabaseClient } from './lib/supabase';
+import { generateUUID, stringToUUID } from './business_logic';
 import ProjectCard from './components/ProjectCard';
 import ProjectDetail from './components/ProjectDetail';
 import CouponModal from './components/CouponModal';
@@ -637,9 +638,52 @@ export default function App() {
     updatedComponents: ProjectComponent[],
     updatedContributions: Contribution[]
   ) => {
+    // Deterministically sanitize IDs to valid UUIDs for components and contributions
+    const sanitizedComponents = updatedComponents.map(c => ({
+      ...c,
+      id: stringToUUID(c.id)
+    }));
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const sanitizedContributions = updatedContributions.map(c => {
+      let resolvedBackerId: string | null = null;
+      if (c.backer_id && uuidRegex.test(c.backer_id)) {
+        resolvedBackerId = c.backer_id;
+      } else {
+        const matchingUser = users.find(u => 
+          u.email.toLowerCase() === c.backer_email.toLowerCase() && 
+          u.id && uuidRegex.test(u.id)
+        );
+        if (matchingUser) {
+          resolvedBackerId = matchingUser.id;
+        }
+      }
+
+      return {
+        ...c,
+        id: stringToUUID(c.id),
+        component_id: stringToUUID(c.component_id),
+        backer_id: resolvedBackerId
+      };
+    });
+
+    const componentsChanged = sanitizedComponents.some((c, i) => c.id !== updatedComponents[i]?.id);
+    const contributionsChanged = sanitizedContributions.some((c, i) => 
+      c.id !== updatedContributions[i]?.id || 
+      c.backer_id !== updatedContributions[i]?.backer_id || 
+      c.component_id !== updatedContributions[i]?.component_id
+    );
+
+    if (componentsChanged) {
+      setComponents(sanitizedComponents);
+    }
+    if (contributionsChanged) {
+      setContributions(sanitizedContributions);
+    }
+
     localStorage.setItem(LS_PROJECTS, JSON.stringify(updatedProjects));
-    localStorage.setItem(LS_COMPONENTS, JSON.stringify(updatedComponents));
-    localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(updatedContributions));
+    localStorage.setItem(LS_COMPONENTS, JSON.stringify(sanitizedComponents));
+    localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(sanitizedContributions));
 
     if (supabase && supabaseConfig.isConnected) {
       // 1. Upsert projects
@@ -653,8 +697,8 @@ export default function App() {
       }
 
       // 2. Upsert components (exclude total_price generated column)
-      if (updatedComponents.length > 0) {
-        const componentsToUpsert = updatedComponents.map(({ total_price, ...rest }) => rest);
+      if (sanitizedComponents.length > 0) {
+        const componentsToUpsert = sanitizedComponents.map(({ total_price, ...rest }) => rest);
         supabase
           .from('components')
           .upsert(componentsToUpsert)
@@ -664,10 +708,10 @@ export default function App() {
       }
 
       // 3. Upsert contributions
-      if (updatedContributions.length > 0) {
+      if (sanitizedContributions.length > 0) {
         supabase
           .from('contributions')
-          .upsert(updatedContributions)
+          .upsert(sanitizedContributions)
           .then(({ error }) => {
             if (error) console.error('Error upserting contributions to Supabase:', error);
           });
@@ -1111,7 +1155,7 @@ export default function App() {
       const allowPartial = price > 100000 && qty < 3;
 
       parsedComponents.push({
-        id: `comp-${sanitizedId}-${i}-${Math.random().toString(36).substring(2, 5)}`,
+        id: generateUUID(),
         project_id: sanitizedId,
         name,
         unit_price: price,
@@ -1364,7 +1408,7 @@ export default function App() {
         }
       } else {
         parsedComps.push({
-          id: `comp-${editingProject.id}-${i}-${Math.random().toString(36).substring(2, 5)}`,
+          id: generateUUID(),
           project_id: editingProject.id,
           name,
           unit_price: price,

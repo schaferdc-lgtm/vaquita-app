@@ -1,5 +1,57 @@
 import { ProjectComponent, Contribution } from './types';
 
+export function stringToUUID(str: string): string {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) {
+    return str.toLowerCase();
+  }
+
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  
+  const hex1 = (h1 >>> 0).toString(16).padStart(8, '0');
+  const hex2 = (h2 >>> 0).toString(16).padStart(8, '0');
+  
+  let h3 = h1 ^ 0xabcdef01, h4 = h2 ^ 0x10fedcba;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h3 = Math.imul(h3 ^ ch, 2654435761);
+    h4 = Math.imul(h4 ^ ch, 1597334677);
+  }
+  h3 = Math.imul(h3 ^ (h3 >>> 16), 2246822507) ^ Math.imul(h4 ^ (h4 >>> 13), 3266489909);
+  h4 = Math.imul(h4 ^ (h4 >>> 16), 2246822507) ^ Math.imul(h3 ^ (h3 >>> 13), 3266489909);
+  
+  const hex3 = (h3 >>> 0).toString(16).padStart(8, '0');
+  const hex4 = (h4 >>> 0).toString(16).padStart(8, '0');
+
+  const combined = (hex1 + hex2 + hex3 + hex4).substring(0, 32);
+  
+  const part1 = combined.substring(0, 8);
+  const part2 = combined.substring(8, 12);
+  const part3 = '4' + combined.substring(13, 16);
+  const part4 = 'a' + combined.substring(17, 20);
+  const part5 = combined.substring(20, 32);
+  
+  return `${part1}-${part2}-${part3}-${part4}-${part5}`;
+}
+
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 /**
  * Checks if a component is eligible for fractional/partial funding.
  * Rule: Unit price > 100,000 AND quantity < 3.
@@ -149,9 +201,9 @@ export function fundComponent(
   const companyAlias = generateCompanyAlias(component.name);
 
   const contribution: Contribution = {
-    id: `contrib-${Math.random().toString(36).substring(2, 9)}`,
+    id: generateUUID(),
     project_id: component.project_id,
-    component_id: component.id,
+    component_id: stringToUUID(component.id),
     backer_id: backerId,
     backer_email: backerEmail,
     backer_name: backerName,
