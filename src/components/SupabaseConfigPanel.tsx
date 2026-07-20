@@ -65,16 +65,57 @@ export default function SupabaseConfigPanel({
       });
     } catch (err: any) {
       console.error('Error de conexión a Supabase:', err);
-      let errMsg = err.message || JSON.stringify(err);
       
-      if (errMsg.includes('Failed to fetch')) {
-        errMsg = 'Error de Red (Failed to fetch). Verifique que la URL de su proyecto de Supabase sea correcta y que tenga acceso a internet.';
+      let errMsg = '';
+      let isCorsOrUrlError = false;
+
+      if (err) {
+        if (typeof err === 'object') {
+          // Si el objeto de error tiene mensaje pero está vacío, o es {"message":""}
+          if (err.message === '') {
+            errMsg = 'Respuesta vacía de Supabase ({"message":""}). Esto suele indicar que la URL de Supabase es incorrecta/inaccesible (error de resolución de nombre/DNS) o que hay un bloqueo de CORS.';
+            isCorsOrUrlError = true;
+          } else if (err.message) {
+            errMsg = err.message;
+          } else {
+            const stringified = JSON.stringify(err);
+            if (stringified === '{"message":""}' || stringified === '{}') {
+              errMsg = 'Conexión rechazada o silenciosa ({"message":""}). Esto sucede habitualmente si la URL de Supabase ingresada no existe, tiene errores tipográficos, o si la petición fue bloqueada por políticas de CORS del navegador.';
+              isCorsOrUrlError = true;
+            } else {
+              errMsg = `Detalles del error: ${stringified}`;
+            }
+          }
+
+          if (err.details) {
+            errMsg += ` (Detalle: ${err.details})`;
+          }
+          if (err.hint) {
+            errMsg += ` (Sugerencia: ${err.hint})`;
+          }
+          if (err.code) {
+            errMsg += ` [Código: ${err.code}]`;
+          }
+        } else {
+          errMsg = String(err);
+        }
+      } else {
+        errMsg = 'Error de conexión desconocido (respuesta nula).';
+      }
+      
+      // Aplicar filtros de error comunes para hacerlos amigables
+      if (errMsg.includes('Failed to fetch') || isCorsOrUrlError) {
+        errMsg = `Error de Red / Configuración (${errMsg}). Por favor verifique:
+1. Que la URL ingresada comience con 'https://' y sea exactamente la que figura en "Project Settings > API > Project URL".
+2. Que la clave pública (anon public) sea la correcta y pertenezca al mismo proyecto de esa URL.
+3. Que no haya extensiones de navegador o políticas de red bloqueando la conexión.`;
       } else if (errMsg.includes('Invalid API key') || errMsg.includes('JWT')) {
-        errMsg = 'Clave Anon Key inválida. Verifique que la clave ingresada sea la clave pública "anon public" correcta.';
-      } else if (errMsg.includes('does not exist')) {
-        errMsg = `Error de Esquema: La tabla buscada no existe en su base de datos (${err.message}). Recuerde ejecutar el script SQL de creación de tablas en la sección de abajo.`;
+        errMsg = 'Clave Anon Key inválida. Verifique que la clave ingresada sea la clave pública "anon public" correcta de su panel de Supabase.';
+      } else if (errMsg.includes('does not exist') || errMsg.includes('relation "public.profiles"')) {
+        errMsg = `Error de Esquema: La tabla "profiles" no existe en su base de datos.
+Recuerde que debe copiar el script SQL de creación de tablas que se encuentra al final de esta pantalla, ir a su consola de Supabase, abrir la sección "SQL Editor", presionar "New query", pegar el script completo y hacer clic en "Run".`;
       } else if (err.code === 'PGRST111') {
-        errMsg = 'No se encontraron las tablas requeridas. Por favor ejecute el script SQL provisto abajo en la consola de Supabase.';
+        errMsg = 'No se encontraron las tablas requeridas o el esquema de la base de datos está vacío. Por favor ejecute el script SQL provisto abajo en la consola de Supabase.';
       }
 
       setTestResult({
