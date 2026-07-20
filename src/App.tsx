@@ -2129,26 +2129,47 @@ export default function App() {
             {supabaseConfig.isConnected ? (
               supabaseError ? (
                 <button
-                  onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                  onClick={() => { 
+                    if (isAdmin) {
+                      setSelectedProjectId(null); 
+                      setActiveTab('admin'); 
+                    } else {
+                      showAlert('error', 'Solo los administradores autorizados pueden configurar o diagnosticar Supabase.');
+                    }
+                  }}
                   className="text-[9px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full border border-red-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-red-100 transition"
-                  title={`Error de Conexión: ${supabaseError}. Haz clic para ver y solucionar.`}
+                  title={isAdmin ? `Error de Conexión: ${supabaseError}. Haz clic para ver y solucionar.` : `Error de Conexión a Supabase.`}
                 >
                   🔴 Error Supabase
                 </button>
               ) : (
                 <button
-                  onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                  onClick={() => { 
+                    if (isAdmin) {
+                      setSelectedProjectId(null); 
+                      setActiveTab('admin'); 
+                    } else {
+                      showAlert('success', 'Conectado a la base de datos de Supabase en la nube.');
+                    }
+                  }}
                   className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-emerald-100 transition"
-                  title="Conectado a Supabase correctamente. Haz clic para ver detalles."
+                  title="Conectado a Supabase correctamente."
                 >
                   🟢 Supabase
                 </button>
               )
             ) : (
               <button
-                onClick={() => { setSelectedProjectId(null); setActiveTab('settings'); }}
+                onClick={() => { 
+                  if (isAdmin) {
+                    setSelectedProjectId(null); 
+                    setActiveTab('admin'); 
+                  } else {
+                    showAlert('error', 'Modo Local activo. El administrador debe conectar Supabase.');
+                  }
+                }}
                 className="text-[9px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100 font-bold flex items-center gap-1 cursor-pointer hover:bg-amber-100 transition"
-                title="Modo Local. Los datos se guardan en este navegador. Haz clic para conectar Supabase."
+                title="Modo Local. Los datos se guardan en este navegador."
               >
                 🟠 Modo Local
               </button>
@@ -2174,8 +2195,8 @@ export default function App() {
             ) : (
               <button 
                 onClick={supabaseConfig.isConnected ? handleRealGoogleLogin : () => {
-                  setActiveTab('settings');
-                  showAlert('error', 'Supabase no está conectado aún. Configura tus credenciales en este panel para habilitar el Login Real con Google.');
+                  setActiveTab('admin');
+                  showAlert('error', 'Supabase no está conectado aún. Inicia sesión en modo demo como administrador para configurarlo en el Panel de Admin.');
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3.5 rounded-full shadow-xs transition flex items-center gap-1.5 cursor-pointer"
               >
@@ -3741,6 +3762,28 @@ export default function App() {
                   onClearAllLogs={handleClearAllLogs}
                 />
 
+                {/* Supabase Connectivity & Validator Panel */}
+                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4 mt-8">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider flex items-center gap-2">
+                      <Database className="w-4 h-4 text-blue-600" />
+                      Configuración de Conexión a Supabase (Admin)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-normal">
+                      Configura las credenciales de tu proyecto de Supabase para habilitar la persistencia en tiempo real en la nube, la sincronización de aportes y el registro de usuarios auténticos vía Google OAuth.
+                    </p>
+                  </div>
+                  <SupabaseConfigPanel
+                    config={supabaseConfig}
+                    onSaveConfig={handleSaveSupabaseConfig}
+                    onResetConfig={handleResetSupabaseConfig}
+                    activeUser={activeUser}
+                    onSwitchUser={handleSwitchUser}
+                    allUsers={users}
+                    onAddCustomUser={handleAddCustomUser}
+                  />
+                </div>
+
               </div>
             )}
 
@@ -3755,19 +3798,6 @@ export default function App() {
                 onSwitchUser={handleSwitchUser}
                 onUploadPaymentTicket={handleUploadPaymentTicket}
                 onOpenCoupon={setActiveCoupon}
-              />
-            )}
-
-            {/* VIEW: SETTINGS & SUPABASE CONNECTIVITY */}
-            {activeTab === 'settings' && (
-              <SupabaseConfigPanel
-                config={supabaseConfig}
-                onSaveConfig={handleSaveSupabaseConfig}
-                onResetConfig={handleResetSupabaseConfig}
-                activeUser={activeUser}
-                onSwitchUser={handleSwitchUser}
-                allUsers={users}
-                onAddCustomUser={handleAddCustomUser}
               />
             )}
           </>
