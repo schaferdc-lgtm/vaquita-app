@@ -200,6 +200,15 @@ export default function App() {
       setActiveUser(null);
     }
 
+    // Migration: Clear old mock/test projects once to "clean the screen"
+    const testCleared = localStorage.getItem('vaquita_test_cleared_v3');
+    if (!testCleared) {
+      localStorage.removeItem(LS_PROJECTS);
+      localStorage.removeItem(LS_COMPONENTS);
+      localStorage.removeItem(LS_CONTRIBUTIONS);
+      localStorage.setItem('vaquita_test_cleared_v3', 'true');
+    }
+
     // Hydrate projects
     const localProjects = localStorage.getItem(LS_PROJECTS);
     let loadedProjects: Project[] = [];
@@ -399,9 +408,113 @@ export default function App() {
     }
   };
 
-  // 3. Escuchar cambios de Auth en Supabase
+  // Función para cargar proyectos, requerimientos y aportes reales de Supabase
+  const fetchRealDataFromSupabase = async () => {
+    if (!supabase || !supabaseConfig.isConnected) return;
+    try {
+      // 1. Cargar proyectos reales
+      const { data: dbProjects, error: pError } = await supabase
+        .from('projects')
+        .select('*');
+
+      if (pError) throw pError;
+
+      // 2. Cargar requerimientos reales
+      const { data: dbComponents, error: compError } = await supabase
+        .from('components')
+        .select('*');
+
+      if (compError) throw compError;
+
+      // 3. Cargar aportes reales
+      const { data: dbContributions, error: contribError } = await supabase
+        .from('contributions')
+        .select('*');
+
+      if (contribError) throw contribError;
+
+      // Mapear estructuras de BBDD a interfaces de TypeScript de React
+      const mappedProjects: Project[] = (dbProjects || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description || '',
+        category: p.category,
+        owner_id: p.owner_id,
+        created_at: p.created_at,
+        avatar_url: p.avatar_url,
+        banner_url: p.banner_url,
+        payment_alias: p.payment_alias,
+        payment_cbu: p.payment_cbu,
+        start_date: p.start_date,
+        end_date: p.end_date,
+        is_deleted: p.is_deleted,
+        is_approved: p.is_approved,
+        tk_payment_method: p.tk_payment_method,
+        tk_mp_preference_id: p.tk_mp_preference_id,
+        tk_mp_payment_id: p.tk_mp_payment_id,
+        tk_mp_payment_status: p.tk_mp_payment_status,
+        tk_payment_ticket: p.tk_payment_ticket,
+        max_duration_months: p.max_duration_months,
+        document_url: p.document_url,
+        document_name: p.document_name,
+        photo_reel: p.photo_reel || [],
+      }));
+
+      const mappedComponents: ProjectComponent[] = (dbComponents || []).map((c: any) => ({
+        id: c.id,
+        project_id: c.project_id,
+        name: c.name,
+        unit_price: Number(c.unit_price),
+        quantity: Number(c.quantity),
+        remaining_quantity: Number(c.remaining_quantity),
+        funded_amount: Number(c.funded_amount),
+        allow_partial: c.allow_partial,
+        total_price: Number(c.quantity) * Number(c.unit_price),
+        thank_you_threshold_percent: c.thank_you_threshold_percent || 50,
+      }));
+
+      const mappedContributions: Contribution[] = (dbContributions || []).map((con: any) => ({
+        id: con.id,
+        project_id: con.project_id,
+        component_id: con.component_id,
+        backer_id: con.backer_id,
+        backer_email: con.backer_email,
+        backer_name: con.backer_name,
+        amount: Number(con.amount),
+        quantity_bought: Number(con.quantity_bought),
+        coupon_code: con.coupon_code,
+        company_alias: con.company_alias,
+        created_at: con.created_at,
+        status: con.status,
+        payment_ticket: con.payment_ticket,
+        payment_bank: con.payment_bank,
+        validated_at: con.validated_at,
+        payment_method: con.payment_method,
+        mp_preference_id: con.mp_preference_id,
+        mp_payment_id: con.mp_payment_id,
+        mp_payment_status: con.mp_payment_status,
+      }));
+
+      setProjects(mappedProjects);
+      setComponents(mappedComponents);
+      setContributions(mappedContributions);
+
+      // Guardar a localStorage
+      localStorage.setItem(LS_PROJECTS, JSON.stringify(mappedProjects));
+      localStorage.setItem(LS_COMPONENTS, JSON.stringify(mappedComponents));
+      localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(mappedContributions));
+    } catch (err: any) {
+      console.error('Error al sincronizar datos reales desde Supabase:', err.message || err);
+    }
+  };
+
+  // 3. Escuchar cambios de Auth y cargar datos de Supabase
   useEffect(() => {
     if (!supabase) return;
+
+    if (supabaseConfig.isConnected) {
+      fetchRealDataFromSupabase();
+    }
 
     // Verificar sesión actual al cargar
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -484,7 +597,7 @@ export default function App() {
     }
   };
 
-  // Sync state modifications to local storage
+  // Sync state modifications to local storage and Supabase if connected
   const syncToLocalStorage = (
     updatedProjects: Project[],
     updatedComponents: ProjectComponent[],
@@ -493,6 +606,39 @@ export default function App() {
     localStorage.setItem(LS_PROJECTS, JSON.stringify(updatedProjects));
     localStorage.setItem(LS_COMPONENTS, JSON.stringify(updatedComponents));
     localStorage.setItem(LS_CONTRIBUTIONS, JSON.stringify(updatedContributions));
+
+    if (supabase && supabaseConfig.isConnected) {
+      // 1. Upsert projects
+      if (updatedProjects.length > 0) {
+        supabase
+          .from('projects')
+          .upsert(updatedProjects)
+          .then(({ error }) => {
+            if (error) console.error('Error upserting projects to Supabase:', error);
+          });
+      }
+
+      // 2. Upsert components (exclude total_price generated column)
+      if (updatedComponents.length > 0) {
+        const componentsToUpsert = updatedComponents.map(({ total_price, ...rest }) => rest);
+        supabase
+          .from('components')
+          .upsert(componentsToUpsert)
+          .then(({ error }) => {
+            if (error) console.error('Error upserting components to Supabase:', error);
+          });
+      }
+
+      // 3. Upsert contributions
+      if (updatedContributions.length > 0) {
+        supabase
+          .from('contributions')
+          .upsert(updatedContributions)
+          .then(({ error }) => {
+            if (error) console.error('Error upserting contributions to Supabase:', error);
+          });
+      }
+    }
   };
 
   // Log user actions & prune logs over 500 for non-admins
@@ -977,7 +1123,7 @@ export default function App() {
       name: newProjectName.trim(),
       description: newProjectDesc.trim(),
       category: newProjectCategory,
-      owner_id: activeUser?.id || 'user-owner-1',
+      owner_id: activeUser?.id || 'e482701b-c741-4e0d-b8d9-2f2dbf77c3a0',
       created_at: new Date().toISOString(),
       avatar_url: newProjectAvatarUrl || undefined,
       banner_url: newProjectBannerUrl || undefined,
@@ -1962,6 +2108,11 @@ export default function App() {
 
           {/* Active User Google Auth UI */}
           <div className="flex items-center gap-3">
+            {supabaseConfig.isConnected ? (
+              <span className="text-[9px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-100 font-bold flex items-center gap-1">🟢 Supabase</span>
+            ) : (
+              <span className="text-[9px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full border border-amber-100 font-bold flex items-center gap-1">🟠 Modo Local</span>
+            )}
             {activeUser ? (
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-100 p-1.5 pr-3 rounded-full">
                 <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-700 text-white font-extrabold flex items-center justify-center text-xs shadow-xs">
